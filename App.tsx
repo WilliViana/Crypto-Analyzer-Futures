@@ -254,7 +254,7 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchRealData();
-      const i = setInterval(fetchRealData, 15000);
+      const i = setInterval(fetchRealData, 60000); // Poll every 1 minute
       return () => clearInterval(i);
     }
   }, [isAuthenticated, fetchRealData]);
@@ -262,14 +262,22 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} />;
+        return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} profiles={profiles} exchanges={exchanges} onRefresh={fetchRealData} />;
       case 'settings':
         return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
       case 'strategies':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
             {profiles.map(p => (
-              <StrategyCard key={p.id} profile={p} lang={lang} onEdit={setEditingProfile} onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))} />
+              <StrategyCard
+                key={p.id}
+                profile={p}
+                lang={lang}
+                onEdit={setEditingProfile}
+                onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))}
+                onDelete={(id) => { if (window.confirm('Deseja realmente excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }}
+                trades={trades}
+              />
             ))}
             <StrategyCard isAddButton={true} onAdd={() => setEditingProfile(INITIAL_PROFILES_BASE[0])} lang={lang} profile={profiles[0]} onEdit={() => { }} onToggle={() => { }} />
           </div>
@@ -277,7 +285,7 @@ export default function App() {
       case 'analysis':
         return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
       case 'logs': return <AuditLog logs={logs} />;
-      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} />;
+      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} />;
       case 'backtest': return <Backtest profiles={profiles} lang={lang} />;
       case 'admin': return <AdminPanel lang={lang} />;

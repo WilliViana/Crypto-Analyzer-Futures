@@ -91,11 +91,16 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
         }`}
     >
 
-      {/* Inactive overlay */}
+      {/* Inactive overlay - clickable to reactivate */}
       {!profile.active && (
-        <div className="absolute inset-0 bg-black/30 z-10 flex items-center justify-center">
-          <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded-full text-xs font-bold uppercase">Inativo</span>
-        </div>
+        <button
+          onClick={() => onToggle(profile.id)}
+          className="absolute inset-0 bg-black/30 z-10 flex items-center justify-center cursor-pointer hover:bg-black/20 transition-colors"
+        >
+          <span className="bg-gray-800 hover:bg-green-600 text-gray-400 hover:text-white px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors">
+            Clique para Ativar
+          </span>
+        </button>
       )}
 
       {/* Background Glow */}
