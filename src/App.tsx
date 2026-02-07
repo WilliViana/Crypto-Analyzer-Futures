@@ -101,20 +101,34 @@ export default function App() {
     let mounted = true;
     const initSession = async () => {
       try {
+        console.log('[DEBUG] Checking for existing session...');
         const { data: { session } } = await supabase.auth.getSession();
+        console.log('[DEBUG] Session found:', session ? `User: ${session.user.id}` : 'NO SESSION');
+
         if (mounted && session) {
           setSession(session);
           setIsAuthenticated(true);
+          console.log('[DEBUG] Loading user data from Supabase...');
           // SYNC: Load all data from Supabase
           const userData = await loadAllUserData(session.user.id);
+          console.log('[DEBUG] Data loaded:', {
+            exchanges: userData.exchanges.length,
+            strategies: userData.strategies.length,
+            trades: userData.trades.length
+          });
           if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
           if (userData.strategies.length > 0) setProfiles(userData.strategies);
           if (userData.trades.length > 0) setTrades(userData.trades);
           if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
           addLog('[SYNC] Dados carregados do servidor.', 'INFO');
+        } else {
+          console.log('[DEBUG] No session - user not logged in');
         }
         if (mounted) setLoading(false);
-      } catch (error) { setLoading(false); }
+      } catch (error) {
+        console.error('[DEBUG] initSession error:', error);
+        setLoading(false);
+      }
     };
     initSession();
     return () => { mounted = false; };
