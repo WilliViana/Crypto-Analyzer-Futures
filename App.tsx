@@ -254,7 +254,7 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchRealData();
-      const i = setInterval(fetchRealData, 60000); // Poll every 1 minute
+      const i = setInterval(fetchRealData, 15000); // Poll every 15 seconds
       return () => clearInterval(i);
     }
   }, [isAuthenticated, fetchRealData]);

@@ -152,11 +152,14 @@ export const closePosition = async (
       side,
       type: 'MARKET',
       quantity: fixPrecision(quantity, qtyPrecision),
-      reduceOnly: 'true',
     };
 
+    // In Hedge mode use positionSide, in One-way mode use reduceOnly
+    // Cannot use both at the same time
     if (positionSide !== 'BOTH') {
       params.positionSide = positionSide;
+    } else {
+      params.reduceOnly = 'true';
     }
 
     let res;
