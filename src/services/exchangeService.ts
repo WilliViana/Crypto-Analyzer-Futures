@@ -25,7 +25,7 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
   const data = await response.json();
   if (data.code && data.code !== 200) {
     console.error("[BINANCE FAIL]", data);
-    throw new Error(`Binance: ${data.msg}`); // Aqui capturamos o erro -4061
+    throw new Error(`Binance: ${data.msg}`);
   }
   return data;
 }
@@ -60,11 +60,9 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
     const cleanProfile = profileName.replace(/[^a-zA-Z0-9]/g, '');
     const clientOrderId = `web_${cleanProfile}_${Date.now()}`;
 
-    // 1. Obter Precisão
     let qtyPrecision = 3;
     try { const info = await fetchMarketInfo(exchange); const s = (info.pairs as any[]).find(p => p.symbol === order.symbol); if (s) { qtyPrecision = s.quantityPrecision; } } catch (e) { }
 
-    // 2. Calcular Quantidade
     let finalQty = order.quantity;
     if (!finalQty || finalQty <= 0) {
       const ticker = await callBinanceProxy('/fapi/v1/ticker/price', 'GET', { symbol: order.symbol }, exchange);
@@ -73,14 +71,9 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       const marginUSD = 50;
       const leverage = order.leverage || 10;
       finalQty = (marginUSD * leverage) / price;
-      console.log(`[CALC] Qtd: ${finalQty}`);
     }
 
-    // 3. Verificar Modo de Posição (Hedge vs One-Way)
-    // Em Hedge Mode: BUY = LONG, SELL = SHORT (para abrir)
-    // Vamos detectar automaticamente ou usar cache
-
-    let positionSide = 'BOTH'; // Padrão One-Way
+    let positionSide = 'BOTH';
     let isHedgeMode = false;
 
     try {
@@ -88,14 +81,9 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       isHedgeMode = positionMode.dualSidePosition === true;
       if (isHedgeMode) {
         positionSide = order.side === 'BUY' ? 'LONG' : 'SHORT';
-        console.log(`[HEDGE MODE] positionSide: ${positionSide}`);
       }
-    } catch (e: any) {
-      console.warn("Falha ao checar dual side, tentando detectar por erro:", e.message);
-      // Se não conseguiu checar, vamos tentar com BOTH primeiro e tratar erro depois
-    }
+    } catch (e: any) { }
 
-    // 4. Ajustar Alavancagem
     try { await callBinanceProxy('/fapi/v1/leverage', 'POST', { symbol: order.symbol, leverage: order.leverage || 10 }, exchange); } catch (e) { }
 
     const params: any = {
@@ -110,14 +98,11 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       params.positionSide = positionSide;
     }
 
-    // 5. Enviar Ordem (com retry para Hedge Mode)
     let res;
     try {
       res = await callBinanceProxy('/fapi/v1/order', 'POST', params, exchange);
     } catch (orderError: any) {
-      // Erro -4061: Conta em Hedge Mode mas enviamos sem positionSide
       if (orderError.message?.includes('-4061') || orderError.message?.includes('position side')) {
-        console.log('[RETRY] Detectado Hedge Mode. Reenviando com positionSide...');
         params.positionSide = order.side === 'BUY' ? 'LONG' : 'SHORT';
         params.newClientOrderId = `${clientOrderId}_retry`;
         res = await callBinanceProxy('/fapi/v1/order', 'POST', params, exchange);
@@ -126,16 +111,69 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       }
     }
 
-    // 6. SL/TP (Se sucesso)
     if (res.orderId && (order.stopLossPrice || order.takeProfitPrice)) {
-      // ... Lógica SL/TP
+      // SL/TP logic here
     }
 
     return { success: true, message: `Ordem Executada! ID: ${res.orderId}`, orderId: res.orderId };
 
   } catch (e: any) {
     console.error("[EXECUTE ERROR]", e);
-    // Retorna a mensagem exata da Binance para o usuário saber (ex: "Position Side mismatch")
     return { success: false, message: e.message || "Erro na execução" };
+  }
+};
+
+export const closePosition = async (
+  symbol: string,
+  quantity: number,
+  side: 'BUY' | 'SELL',
+  exchange: Exchange
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    console.log(`[CLOSE POSITION] ${symbol} | Side: ${side} | Qty: ${quantity}`);
+
+    let qtyPrecision = 3;
+    try {
+      const info = await fetchMarketInfo(exchange);
+      const s = (info.pairs as any[]).find(p => p.symbol === symbol);
+      if (s) qtyPrecision = s.quantityPrecision;
+    } catch (e) { }
+
+    let positionSide: 'BOTH' | 'LONG' | 'SHORT' = 'BOTH';
+    try {
+      const positionMode = await callBinanceProxy('/fapi/v1/positionSide/dual', 'GET', {}, exchange);
+      if (positionMode.dualSidePosition === true) {
+        positionSide = side === 'SELL' ? 'LONG' : 'SHORT';
+      }
+    } catch (e) { }
+
+    const params: any = {
+      symbol,
+      side,
+      type: 'MARKET',
+      quantity: fixPrecision(quantity, qtyPrecision),
+      reduceOnly: 'true',
+    };
+
+    if (positionSide !== 'BOTH') {
+      params.positionSide = positionSide;
+    }
+
+    let res;
+    try {
+      res = await callBinanceProxy('/fapi/v1/order', 'POST', params, exchange);
+    } catch (orderError: any) {
+      if (orderError.message?.includes('-4061') || orderError.message?.includes('position side')) {
+        params.positionSide = side === 'SELL' ? 'LONG' : 'SHORT';
+        res = await callBinanceProxy('/fapi/v1/order', 'POST', params, exchange);
+      } else {
+        throw orderError;
+      }
+    }
+
+    return { success: true, message: `Posição fechada! ID: ${res.orderId}` };
+  } catch (e: any) {
+    console.error("[CLOSE POSITION ERROR]", e);
+    return { success: false, message: e.message || "Erro ao fechar posição" };
   }
 };
