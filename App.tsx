@@ -97,10 +97,12 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    let dataLoaded = false; // Prevent duplicate loading
 
     // Function to load user data from Supabase
     const loadUserDataAndSetState = async (userSession: any) => {
-      if (!mounted || !userSession) return;
+      if (!mounted || !userSession || dataLoaded) return;
+      dataLoaded = true; // Mark as loading
 
       console.log('[AUTH] Loading data for user:', userSession.user.id);
       setSession(userSession);
@@ -113,13 +115,16 @@ export default function App() {
           strategies: userData.strategies.length
         });
 
-        if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
-        if (userData.strategies.length > 0) setProfiles(userData.strategies);
-        if (userData.trades.length > 0) setTrades(userData.trades);
-        if (userData.settings?.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
-        addLog('[SYNC] Dados carregados do servidor.', 'INFO');
+        if (mounted) {
+          if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
+          if (userData.strategies.length > 0) setProfiles(userData.strategies);
+          if (userData.trades.length > 0) setTrades(userData.trades);
+          if (userData.settings?.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+          setLoading(false);
+        }
       } catch (err) {
         console.error('[AUTH] Load error:', err);
+        if (mounted) setLoading(false);
       }
     };
 
@@ -129,12 +134,13 @@ export default function App() {
         if (mounted) {
           if (session) {
             await loadUserDataAndSetState(session);
+          } else {
+            setLoading(false);
           }
-          setLoading(false);
         }
       } catch (error) {
         console.error('[AUTH] Init error:', error);
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
@@ -144,12 +150,14 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[AUTH] State change:', event, session?.user?.email);
 
-      if (event === 'SIGNED_IN' && session) {
+      if (event === 'SIGNED_IN' && session && !dataLoaded) {
         await loadUserDataAndSetState(session);
       } else if (event === 'SIGNED_OUT') {
+        dataLoaded = false;
         setSession(null);
         setIsAuthenticated(false);
         setExchanges([]);
+        setLoading(false);
       }
     });
 
