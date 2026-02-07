@@ -130,25 +130,25 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-3">
                                     <label className="text-xs font-bold text-white uppercase tracking-wider">Leverage (Max 125x)</label>
-                                    <input type="range" min="1" max="100" value={formData.leverage} onChange={(e) => setFormData({ ...formData, leverage: parseInt(e.target.value) })} className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary" />
+                                    <input type="range" aria-label="Nível de alavancagem" min="1" max="100" value={formData.leverage} onChange={(e) => setFormData({ ...formData, leverage: parseInt(e.target.value) })} className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary" />
                                 </div>
                                 <div className="space-y-3">
                                     <label className="text-xs font-bold text-white uppercase tracking-wider">Confiança Mínima ({formData.confidenceThreshold}%)</label>
-                                    <input type="range" min="1" max="95" value={formData.confidenceThreshold} onChange={(e) => setFormData({ ...formData, confidenceThreshold: parseInt(e.target.value) })} className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                    <input type="range" aria-label="Limiar de confiança mínima" min="1" max="95" value={formData.confidenceThreshold} onChange={(e) => setFormData({ ...formData, confidenceThreshold: parseInt(e.target.value) })} className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="p-4 bg-black/20 border border-white/5 rounded-xl">
                                     <label className="text-[10px] font-bold text-yellow-500 uppercase block mb-1">Capital Alocado ($)</label>
-                                    <input type="number" step="10" min="10" value={formData.capital} onChange={(e) => setFormData({ ...formData, capital: parseFloat(e.target.value) || 100 })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" placeholder="100" />
+                                    <input type="number" aria-label="Capital alocado em dólares" step="10" min="10" value={formData.capital} onChange={(e) => setFormData({ ...formData, capital: parseFloat(e.target.value) || 100 })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" placeholder="100" />
                                 </div>
                                 <div className="p-4 bg-black/20 border border-white/5 rounded-xl">
                                     <label className="text-[10px] font-bold text-green-500 uppercase block mb-1">Take Profit %</label>
-                                    <input type="number" step="0.1" value={formData.takeProfit} onChange={(e) => setFormData({ ...formData, takeProfit: parseFloat(e.target.value) })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" />
+                                    <input type="number" aria-label="Porcentagem de Take Profit" step="0.1" value={formData.takeProfit} onChange={(e) => setFormData({ ...formData, takeProfit: parseFloat(e.target.value) })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" />
                                 </div>
                                 <div className="p-4 bg-black/20 border border-white/5 rounded-xl">
                                     <label className="text-[10px] font-bold text-red-500 uppercase block mb-1">Stop Loss %</label>
-                                    <input type="number" step="0.1" value={formData.stopLoss} onChange={(e) => setFormData({ ...formData, stopLoss: parseFloat(e.target.value) })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" />
+                                    <input type="number" aria-label="Porcentagem de Stop Loss" step="0.1" value={formData.stopLoss} onChange={(e) => setFormData({ ...formData, stopLoss: parseFloat(e.target.value) })} className="w-full bg-surface border border-card-border rounded-lg py-2 px-3 text-white text-sm font-mono" />
                                 </div>
                             </div>
                         </div>
@@ -163,24 +163,88 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Fix: Explicitly cast Object.entries to IndicatorConfig mapping to resolve unknown property access errors */}
                                 {(Object.entries(formData.indicators) as [keyof AdvancedIndicators, IndicatorConfig][]).map(([key, config]) => (
-                                    <div key={key} className={`p-3 rounded-xl border transition-all ${config.enabled ? 'bg-surface border-primary/30' : 'bg-black/20 border-card-border opacity-50'}`}>
+                                    <div key={key} className={`p-4 rounded-xl border transition-all ${config.enabled ? 'bg-surface border-primary/30' : 'bg-black/20 border-card-border opacity-50'}`}>
                                         <div className="flex items-center justify-between mb-3">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-3">
                                                 <button onClick={() => toggleIndicator(key)}>
-                                                    {config.enabled ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} className="text-gray-600" />}
+                                                    {config.enabled ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-600" />}
                                                 </button>
-                                                <span className="font-bold text-white uppercase text-[10px]">{key}</span>
+                                                <div>
+                                                    <span className="font-bold text-white uppercase text-xs block">{key}</span>
+                                                    {config.enabled && <span className="text-[9px] text-gray-500">Peso: {config.weight}pts</span>}
+                                                </div>
                                             </div>
-                                            <span className="text-[10px] font-mono font-bold text-gray-500">+{config.weight}pts</span>
+                                            {config.enabled && (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="range"
+                                                        min="0" max="40"
+                                                        value={config.weight}
+                                                        onChange={(e) => updateIndicatorWeight(key, parseInt(e.target.value))}
+                                                        className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary"
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
+
+                                        {/* Advanced Params */}
                                         {config.enabled && (
-                                            <input
-                                                type="range"
-                                                min="0" max="40"
-                                                value={config.weight}
-                                                onChange={(e) => updateIndicatorWeight(key, parseInt(e.target.value))}
-                                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-400"
-                                            />
+                                            <div className="grid grid-cols-3 gap-2 mt-4 border-t border-white/5 pt-3 animate-fade-in">
+                                                {config.period !== undefined && (
+                                                    <div>
+                                                        <label className="text-[9px] text-gray-500 uppercase block mb-1">Período</label>
+                                                        <input
+                                                            type="number"
+                                                            aria-label={`Período para ${key}`}
+                                                            value={config.period}
+                                                            onChange={(e) => setFormData(prev => ({
+                                                                ...prev,
+                                                                indicators: {
+                                                                    ...prev.indicators,
+                                                                    [key]: { ...prev.indicators[key], period: parseInt(e.target.value) }
+                                                                }
+                                                            }))}
+                                                            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white"
+                                                        />
+                                                    </div>
+                                                )}
+                                                {config.thresholdLow !== undefined && (
+                                                    <div>
+                                                        <label className="text-[9px] text-gray-500 uppercase block mb-1">Min (Oversold)</label>
+                                                        <input
+                                                            type="number"
+                                                            aria-label={`Limiar inferior para ${key}`}
+                                                            value={config.thresholdLow}
+                                                            onChange={(e) => setFormData(prev => ({
+                                                                ...prev,
+                                                                indicators: {
+                                                                    ...prev.indicators,
+                                                                    [key]: { ...prev.indicators[key], thresholdLow: parseInt(e.target.value) }
+                                                                }
+                                                            }))}
+                                                            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white"
+                                                        />
+                                                    </div>
+                                                )}
+                                                {config.thresholdHigh !== undefined && (
+                                                    <div>
+                                                        <label className="text-[9px] text-gray-500 uppercase block mb-1">Max (Overbought)</label>
+                                                        <input
+                                                            type="number"
+                                                            aria-label={`Limiar superior para ${key}`}
+                                                            value={config.thresholdHigh}
+                                                            onChange={(e) => setFormData(prev => ({
+                                                                ...prev,
+                                                                indicators: {
+                                                                    ...prev.indicators,
+                                                                    [key]: { ...prev.indicators[key], thresholdHigh: parseInt(e.target.value) }
+                                                                }
+                                                            }))}
+                                                            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 ))}

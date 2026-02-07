@@ -13,6 +13,7 @@ interface StrategyCardProps {
   isAddButton?: boolean;
   onAdd?: () => void;
   trades?: Trade[];
+  isTopPerformer?: boolean;
 }
 
 const colorMap: Record<string, string> = {
@@ -34,7 +35,7 @@ const metricDescriptions: Record<string, string> = {
   confidence: "Nível mínimo de confiança do sinal para abrir uma ordem.",
 };
 
-const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [] }) => {
+const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [], isTopPerformer = false }) => {
   const t = translations[lang].strategy_card;
 
   // Calculate real win rate from trades
@@ -85,11 +86,26 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
     </div>
   );
 
+  // Fire animation styles for top performer
+  const fireStyles = isTopPerformer && profile.active ? `
+    ring-2 ring-orange-500/50 
+    before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-t before:from-orange-500/20 before:via-transparent before:to-transparent before:animate-pulse
+    after:absolute after:-top-24 after:left-1/2 after:-translate-x-1/2 after:w-32 after:h-32 after:bg-orange-500/30 after:rounded-full after:blur-3xl after:animate-pulse
+  ` : '';
+
   return (
     <div
-      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden ${!profile.active ? 'opacity-40 grayscale' : ''
-        }`}
+      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden ${!profile.active ? 'opacity-40 grayscale' : ''} ${fireStyles}`}
     >
+      {/* 🔥 Top Performer Badge */}
+      {isTopPerformer && profile.active && (
+        <div className="absolute -top-1 -right-1 z-20">
+          <div className="relative">
+            <span className="text-2xl animate-bounce">🔥</span>
+            <div className="absolute inset-0 animate-ping text-2xl opacity-50">🔥</div>
+          </div>
+        </div>
+      )}
 
       {/* Inactive overlay - clickable to reactivate */}
       {!profile.active && (

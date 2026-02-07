@@ -16,6 +16,8 @@ import StrategyModal from './components/StrategyModal';
 import SymbolSelector from './components/SymbolSelector';
 import ChatBot from './components/ChatBot';
 import AnalysisView from './components/AnalysisView';
+import UserProfile from './components/UserProfile';
+import InformationTab from './components/InformationTab';
 
 import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo } from './services/exchangeService';
@@ -320,6 +322,17 @@ export default function App() {
       case 'settings':
         return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
       case 'strategies':
+        // Calculate which profile is top performer based on actual PNL from trades
+        const profilePnL = profiles.map(p => {
+          const profileTrades = trades.filter(t =>
+            t.strategyName?.toLowerCase().includes(p.name.toLowerCase()) || t.strategyName === p.id
+          );
+          const totalPnL = profileTrades.filter(t => t.status === 'CLOSED').reduce((sum, t) => sum + (t.pnl || 0), 0);
+          return { id: p.id, pnl: totalPnL };
+        });
+        const topPerformerId = profilePnL.length > 0 ? profilePnL.reduce((a, b) => a.pnl > b.pnl ? a : b).id : null;
+        const hasPositivePnL = profilePnL.some(p => p.pnl > 0);
+
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
             {profiles.map(p => (
@@ -331,6 +344,7 @@ export default function App() {
                 onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))}
                 onDelete={(id) => { if (window.confirm('Deseja realmente excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }}
                 trades={trades}
+                isTopPerformer={hasPositivePnL && p.id === topPerformerId}
               />
             ))}
             <StrategyCard isAddButton={true} onAdd={() => setEditingProfile(INITIAL_PROFILES_BASE[0])} lang={lang} profile={profiles[0]} onEdit={() => { }} onToggle={() => { }} />
@@ -343,6 +357,8 @@ export default function App() {
       case 'history': return <TradeHistory trades={trades} lang={lang} />;
       case 'backtest': return <Backtest profiles={profiles} lang={lang} />;
       case 'admin': return <AdminPanel lang={lang} />;
+      case 'profile': return <UserProfile lang={lang} />;
+      case 'info': return <InformationTab lang={lang} />;
       default: return <div className="text-white p-10">Interface {activeTab} em carregamento...</div>;
     }
   };
