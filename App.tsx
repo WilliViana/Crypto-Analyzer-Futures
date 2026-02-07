@@ -21,7 +21,7 @@ import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { supabase } from './services/supabaseClient';
-import { loadAllUserData, saveExchange, deleteExchange } from './services/syncService';
+import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
 import { Play, Square, Settings, Loader2 } from 'lucide-react';
 
@@ -91,9 +91,35 @@ export default function App() {
     }
   }, []);
 
+  // Auto-save profiles to localStorage and Supabase
+  const initialLoadRef = React.useRef(true);
   useEffect(() => {
     localStorage.setItem('cap_profiles', JSON.stringify(profiles));
-  }, [profiles]);
+
+    // Skip saving during initial load to avoid overwriting with defaults
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
+
+    // Save to Supabase if authenticated
+    if (session?.user?.id && profiles.length > 0) {
+      profiles.forEach(profile => {
+        saveStrategy(session.user.id, profile).catch(err =>
+          console.error('[SYNC] Save profile error:', err)
+        );
+      });
+    }
+  }, [profiles, session]);
+
+  // Auto-save selectedPairs to Supabase
+  useEffect(() => {
+    if (session?.user?.id && selectedPairs.length > 0 && !initialLoadRef.current) {
+      saveUserSettings(session.user.id, { selectedPairs }).catch(err =>
+        console.error('[SYNC] Save settings error:', err)
+      );
+    }
+  }, [selectedPairs, session]);
 
   useEffect(() => {
     let mounted = true;
