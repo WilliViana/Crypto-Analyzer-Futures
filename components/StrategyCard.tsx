@@ -119,12 +119,12 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
       {/* Logic Pipeline */}
       <div className="flex flex-col items-center gap-2 py-4 bg-black/20 rounded-xl mb-4 border border-white/5 min-h-[100px]">
         <div className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mb-1">Workflow IA</div>
-        {profile.workflowSteps.slice(0, 3).map((step, idx) => (
+        {(profile.workflowSteps || []).slice(0, 3).map((step, idx) => (
           <React.Fragment key={idx}>
             <div className="text-[10px] font-mono font-bold bg-surface border border-card-border px-3 py-1.5 rounded-lg text-gray-300 w-[90%] text-center truncate">
               {step}
             </div>
-            {idx < Math.min(profile.workflowSteps.length, 3) - 1 && (
+            {idx < Math.min((profile.workflowSteps || []).length, 3) - 1 && (
               <ArrowDown size={10} className="text-gray-700" />
             )}
           </React.Fragment>

@@ -93,7 +93,8 @@ export const loadStrategies = async (userId: string): Promise<StrategyProfile[]>
         stopLoss: Number(row.stop_loss) || 2,
         takeProfit: Number(row.take_profit) || 4,
         maxDrawdown: Number(row.max_drawdown) || 10,
-        settings: row.settings || {}
+        settings: row.settings || {},
+        workflowSteps: row.workflow_steps || ['Analisar Mercado', 'Verificar Indicadores', 'Executar Trade']
     }));
 };
 
