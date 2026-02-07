@@ -99,39 +99,62 @@ export default function App() {
   // --- AUTH ---
   useEffect(() => {
     let mounted = true;
-    const initSession = async () => {
-      try {
-        console.log('[DEBUG] Checking for existing session...');
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log('[DEBUG] Session found:', session ? `User: ${session.user.id}` : 'NO SESSION');
 
-        if (mounted && session) {
-          setSession(session);
-          setIsAuthenticated(true);
-          console.log('[DEBUG] Loading user data from Supabase...');
-          // SYNC: Load all data from Supabase
-          const userData = await loadAllUserData(session.user.id);
-          console.log('[DEBUG] Data loaded:', {
-            exchanges: userData.exchanges.length,
-            strategies: userData.strategies.length,
-            trades: userData.trades.length
-          });
-          if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
-          if (userData.strategies.length > 0) setProfiles(userData.strategies);
-          if (userData.trades.length > 0) setTrades(userData.trades);
-          if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
-          addLog('[SYNC] Dados carregados do servidor.', 'INFO');
-        } else {
-          console.log('[DEBUG] No session - user not logged in');
-        }
-        if (mounted) setLoading(false);
-      } catch (error) {
-        console.error('[DEBUG] initSession error:', error);
-        setLoading(false);
+    // Function to load user data
+    const loadUserDataAndSetState = async (userSession: any) => {
+      if (!mounted || !userSession) return;
+
+      console.log('[AUTH] Loading data for user:', userSession.user.id);
+      setSession(userSession);
+      setIsAuthenticated(true);
+
+      try {
+        const userData = await loadAllUserData(userSession.user.id);
+        console.log('[AUTH] Loaded:', { exchanges: userData.exchanges.length, strategies: userData.strategies.length });
+
+        if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
+        if (userData.strategies.length > 0) setProfiles(userData.strategies);
+        if (userData.trades.length > 0) setTrades(userData.trades);
+        if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+        addLog('[SYNC] Dados carregados do servidor.', 'INFO');
+      } catch (err) {
+        console.error('[AUTH] Load error:', err);
       }
     };
+
+    // Initial session check
+    const initSession = async () => {
+      console.log('[AUTH] Checking initial session...');
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        console.log('[AUTH] Session found:', session.user.email);
+        await loadUserDataAndSetState(session);
+      } else {
+        console.log('[AUTH] No session found');
+      }
+      if (mounted) setLoading(false);
+    };
+
     initSession();
-    return () => { mounted = false; };
+
+    // Listen for auth changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[AUTH] State change:', event, session?.user?.email);
+
+      if (event === 'SIGNED_IN' && session) {
+        await loadUserDataAndSetState(session);
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setIsAuthenticated(false);
+        setExchanges([]);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // --- LOAD MARKET ---
