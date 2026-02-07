@@ -1,22 +1,46 @@
 
-// Fix: Updated initialization and types to follow @google/genai guidelines
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+// Gemini Service - Lazy loading to prevent initialization errors
 import { MarketData, StrategyProfile, Language } from "../types";
 
-// Use Vite environment variable format for browser compatibility
-const getApiKey = () => {
-  const key = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (!key) {
-    console.warn('VITE_GEMINI_API_KEY not set. Gemini features will be disabled.');
+// Type definitions (imported types only, not the library itself)
+type GoogleGenAI = any;
+type Chat = any;
+type GenerateContentResponse = any;
+
+// Lazy-loaded client cache
+let _aiClient: GoogleGenAI | null = null;
+let _initAttempted = false;
+
+// Get API key from Vite environment
+const getApiKey = (): string | null => {
+  try {
+    const key = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    return key || null;
+  } catch {
     return null;
   }
-  return key;
 };
 
-const getAIClient = () => {
+// Lazily initialize the AI client (only when first needed)
+const getAIClient = async (): Promise<GoogleGenAI | null> => {
+  if (_initAttempted) return _aiClient;
+  _initAttempted = true;
+
   const apiKey = getApiKey();
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+  if (!apiKey) {
+    console.warn('VITE_GEMINI_API_KEY not set. Gemini features disabled.');
+    return null;
+  }
+
+  try {
+    // Dynamic import - only load the library when we have an API key
+    const { GoogleGenAI } = await import('@google/genai');
+    _aiClient = new GoogleGenAI({ apiKey });
+    return _aiClient;
+  } catch (error) {
+    console.error('Failed to initialize Gemini:', error);
+    return null;
+  }
 };
 
 const SYSTEM_INSTRUCTION = `
@@ -41,30 +65,40 @@ RULES:
 export class TradingChatSession {
   private chat: Chat | null = null;
   private model: string = 'gemini-3-flash-preview';
+  private lang: Language;
+  private initialized: boolean = false;
 
   constructor(lang: Language) {
-    const ai = getAIClient();
-    if (!ai) {
-      console.warn('Gemini AI client not available. Chat features disabled.');
-      return;
-    }
+    this.lang = lang;
+    // Don't initialize here - do it lazily on first message
+  }
+
+  private async ensureInitialized(): Promise<boolean> {
+    if (this.initialized) return this.chat !== null;
+    this.initialized = true;
+
+    const ai = await getAIClient();
+    if (!ai) return false;
+
     this.chat = ai.chats.create({
       model: this.model,
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION + `\nRespond in ${lang === 'pt' ? 'Portuguese' : lang === 'es' ? 'Spanish' : 'English'}.`,
+        systemInstruction: SYSTEM_INSTRUCTION + `\nRespond in ${this.lang === 'pt' ? 'Portuguese' : this.lang === 'es' ? 'Spanish' : 'English'}.`,
         temperature: 0.7,
       },
     });
+    return true;
   }
 
   async sendMessage(userMessage: string, marketContext?: MarketData, symbol?: string): Promise<string> {
-    if (!this.chat) {
+    const ready = await this.ensureInitialized();
+    if (!ready || !this.chat) {
       return "Chat AI não disponível. Configure a API Key do Gemini.";
     }
+
     try {
       let prompt = userMessage;
 
-      // Inject Invisible Context
       if (marketContext && symbol) {
         prompt += `\n\n[SYSTEM DATA INJECTION - HIDDEN FROM USER]
         Current Asset: ${symbol}
@@ -93,11 +127,12 @@ export const analyzeMarket = async (
   lang: Language
 ): Promise<string> => {
   try {
-    const ai = getAIClient();
+    const ai = await getAIClient();
     if (!ai) return "Análise de mercado indisponível. Configure a API Key do Gemini.";
+
     const btcPrice = marketData.price > 0 ? `$${marketData.price.toFixed(2)}` : "Unavailable";
 
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `
         Act as a Senior Futures Analyst.
@@ -123,9 +158,10 @@ export const analyzeMarket = async (
 
 export const getMarketNews = async (symbol: string, lang: Language): Promise<{ text: string, sources: any[] }> => {
   try {
-    const ai = getAIClient();
+    const ai = await getAIClient();
     if (!ai) return { text: "Notícias indisponíveis. Configure a API Key do Gemini.", sources: [] };
-    const response: GenerateContentResponse = await ai.models.generateContent({
+
+    const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Search for breaking news, whale flows, and sentiment for ${symbol} crypto. Respond in ${lang}.`,
       config: {
@@ -145,9 +181,10 @@ export const getMarketNews = async (symbol: string, lang: Language): Promise<{ t
 
 export const runDeepAnalysis = async (marketData: MarketData, lang: Language): Promise<string> => {
   try {
-    const ai = getAIClient();
+    const ai = await getAIClient();
     if (!ai) return "Análise profunda indisponível. Configure a API Key do Gemini.";
-    const response: GenerateContentResponse = await ai.models.generateContent({
+
+    const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `Perform a 'Chain of Thought' deep strategy analysis for BTC/USDT. Price: $${marketData.price.toFixed(2)}. Consider liquidity zones, traps, and order block theory. Respond in ${lang}.`,
       config: {
