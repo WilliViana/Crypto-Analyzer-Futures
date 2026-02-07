@@ -8,7 +8,7 @@ const env = (import.meta as any).env || {};
 
 // Use environment variables if available, otherwise fallback to the provided keys.
 export const SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://bhigvgfkttvjibvlyqpl.supabase.co';
-export const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_evRIn3L9b9XfvcfC6sCe2g_gjpkne1i';
+export const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
 
 // Typed Supabase client with auth persistence enabled
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
