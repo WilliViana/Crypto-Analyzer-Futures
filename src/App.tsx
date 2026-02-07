@@ -228,10 +228,32 @@ export default function App() {
                 executeOrder({
                   symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
                   stopLossPrice: sl, takeProfitPrice: tp
-                }, activeExchange, currentProfile.name).then(res => {
+                }, activeExchange, currentProfile.name).then(async (res) => {
                   if (res.success) {
                     addLog(`✅ ORDEM EXECUTADA: ${symbol} ${side} | ID: ${res.orderId} | Entry: $${price.toFixed(2)}`, 'SUCCESS');
                     notify('success', 'Ordem Automática', `${side} ${symbol} @ $${price.toFixed(2)}`);
+
+                    // SYNC: Save trade to Supabase for cross-device persistence
+                    if (session?.user?.id) {
+                      const newTrade: Trade = {
+                        id: res.orderId || `trade_${Date.now()}`,
+                        symbol,
+                        side: (side === 'BUY' ? 'LONG' : 'SHORT') as 'LONG' | 'SHORT',
+                        price,
+                        quantity: positionValue / price,
+                        initialMargin: positionValue,
+                        leverage: currentProfile.leverage,
+                        stopLoss: sl,
+                        takeProfit: tp,
+                        pnl: 0,
+                        status: 'OPEN',
+                        timestamp: new Date().toISOString(),
+                        strategyName: currentProfile.name
+                      };
+                      await saveTrade(session.user.id, newTrade);
+                      addLog(`[SYNC] Trade salvo no servidor.`, 'INFO');
+                    }
+
                     fetchRealData();
                   } else {
                     addLog(`❌ ORDEM FALHOU: ${symbol} | Erro: ${res.message}`, 'ERROR');

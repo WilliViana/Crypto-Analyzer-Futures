@@ -107,6 +107,25 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
         }
     };
 
+    const handleCloseAllPositions = async () => {
+        const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+        if (!activeExchange || assets.length === 0) return;
+        if (!confirm(`Fechar TODAS as ${assets.length} posições abertas?`)) return;
+
+        setIsClosing(true);
+        try {
+            for (const asset of assets) {
+                const side = asset.amount > 0 ? 'SELL' : 'BUY';
+                await closePosition(asset.symbol, Math.abs(asset.amount), side as 'BUY' | 'SELL', activeExchange);
+            }
+            onRefresh?.();
+        } catch (error) {
+            console.error('Close all positions error:', error);
+        } finally {
+            setIsClosing(false);
+        }
+    };
+
     const AssetModal = ({ asset, onClose }: { asset: any, onClose: () => void }) => {
         const strategyName = getStrategyForAsset(asset.symbol);
         const side = asset.amount > 0 ? 'LONG' : 'SHORT';
@@ -197,8 +216,8 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
                                 key={filter.value}
                                 onClick={() => setSelectedTimeFilter(filter.value)}
                                 className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-colors ${selectedTimeFilter === filter.value
-                                        ? 'bg-primary text-white'
-                                        : 'text-gray-500 hover:text-white'
+                                    ? 'bg-primary text-white'
+                                    : 'text-gray-500 hover:text-white'
                                     }`}
                             >
                                 {filter.label}
@@ -326,7 +345,19 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
                     <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-tight">
                         <Layers size={18} className="text-blue-400" /> Posições Abertas
                     </h3>
-                    <span className="text-xs text-gray-500">{assets.length} posições</span>
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{assets.length} posições</span>
+                        {assets.length > 0 && (
+                            <button
+                                onClick={handleCloseAllPositions}
+                                disabled={isClosing}
+                                className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border border-red-500/30 rounded text-[10px] font-bold uppercase transition-all disabled:opacity-50"
+                                title="Fechar todas as posições"
+                            >
+                                {isClosing ? 'Fechando...' : 'Fechar Todas'}
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-gray-400">
@@ -338,6 +369,7 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
                                 <th className="p-4 text-right">Entrada</th>
                                 <th className="p-4 text-right">Valor</th>
                                 <th className="p-4 text-right">PnL</th>
+                                <th className="p-4 text-center">Lev.</th>
                                 <th className="p-4 text-center">Ação</th>
                             </tr>
                         </thead>
@@ -367,6 +399,9 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
                                         {asset.unrealizedPnL >= 0 ? '+' : ''}${asset.unrealizedPnL?.toLocaleString() || '0.00'}
                                     </td>
                                     <td className="p-4 text-center">
+                                        <span className="text-xs font-bold text-yellow-400">{asset.leverage || '1'}x</span>
+                                    </td>
+                                    <td className="p-4 text-center">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); }}
                                             className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded text-[10px] font-bold uppercase border border-red-500/20"
@@ -377,7 +412,7 @@ const WalletDashboard: React.FC<WalletDashboardProps> = React.memo(({
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={7} className="p-10 text-center text-gray-600 italic">
+                                    <td colSpan={8} className="p-10 text-center text-gray-600 italic">
                                         Nenhuma posição de futuros em aberto.
                                     </td>
                                 </tr>
