@@ -91,35 +91,54 @@ export default function App() {
     }
   }, []);
 
+  // Track when initial data load completes to prevent auto-save during load
+  const dataLoadedRef = React.useRef(false);
+  const lastSavedProfilesRef = React.useRef<string>('');
+  const lastSavedPairsRef = React.useRef<string>('');
+
   // Auto-save profiles to localStorage and Supabase
-  const initialLoadRef = React.useRef(true);
   useEffect(() => {
+    // Always save to localStorage
     localStorage.setItem('cap_profiles', JSON.stringify(profiles));
 
-    // Skip saving during initial load to avoid overwriting with defaults
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
+    // Skip saving to Supabase during initial load
+    if (!dataLoadedRef.current || !session?.user?.id || profiles.length === 0) {
       return;
     }
 
-    // Save to Supabase if authenticated
-    if (session?.user?.id && profiles.length > 0) {
-      profiles.forEach(profile => {
-        saveStrategy(session.user.id, profile).catch(err =>
-          console.error('[SYNC] Save profile error:', err)
-        );
-      });
+    // Only save if profiles actually changed (prevent loop)
+    const profilesJson = JSON.stringify(profiles.map(p => ({ id: p.id, active: p.active, name: p.name })));
+    if (profilesJson === lastSavedProfilesRef.current) {
+      return;
     }
-  }, [profiles, session]);
+    lastSavedProfilesRef.current = profilesJson;
 
-  // Auto-save selectedPairs to Supabase
-  useEffect(() => {
-    if (session?.user?.id && selectedPairs.length > 0 && !initialLoadRef.current) {
-      saveUserSettings(session.user.id, { selectedPairs }).catch(err =>
-        console.error('[SYNC] Save settings error:', err)
+    console.log('[SYNC] Saving profiles to Supabase...');
+    profiles.forEach(profile => {
+      saveStrategy(session.user.id, profile).catch(err =>
+        console.error('[SYNC] Save profile error:', err)
       );
+    });
+  }, [profiles]);
+
+  // Auto-save selectedPairs to Supabase (only after initial load)
+  useEffect(() => {
+    if (!dataLoadedRef.current || !session?.user?.id || selectedPairs.length === 0) {
+      return;
     }
-  }, [selectedPairs, session]);
+
+    // Only save if pairs actually changed
+    const pairsJson = JSON.stringify(selectedPairs);
+    if (pairsJson === lastSavedPairsRef.current) {
+      return;
+    }
+    lastSavedPairsRef.current = pairsJson;
+
+    console.log('[SYNC] Saving selectedPairs to Supabase...');
+    saveUserSettings(session.user.id, { selectedPairs }).catch(err =>
+      console.error('[SYNC] Save settings error:', err)
+    );
+  }, [selectedPairs]);
 
   useEffect(() => {
     let mounted = true;
@@ -146,6 +165,15 @@ export default function App() {
           if (userData.strategies.length > 0) setProfiles(userData.strategies);
           if (userData.trades.length > 0) setTrades(userData.trades);
           if (userData.settings?.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+
+          // Initialize lastSaved refs to prevent immediate re-save after load
+          lastSavedProfilesRef.current = JSON.stringify(userData.strategies.map((p: any) => ({ id: p.id, active: p.active, name: p.name })));
+          lastSavedPairsRef.current = JSON.stringify(userData.settings?.selectedPairs || []);
+
+          // Mark data as loaded - this enables auto-save for future changes
+          dataLoadedRef.current = true;
+          console.log('[AUTH] Data loaded, auto-save enabled');
+
           setLoading(false);
         }
       } catch (err) {
