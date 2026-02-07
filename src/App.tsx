@@ -167,51 +167,80 @@ export default function App() {
           }
 
           // --- LOG DE AUDITORIA EXPLÍCITO ---
-          addLog(`[${currentProfile.name}] Analisando lote ${assetBatchIndex} - ${assetBatchIndex + currentBatch.length}`, 'INFO');
+          const profileEmoji = currentProfile.riskLevel === 'Low' ? '🛡️' :
+            currentProfile.riskLevel === 'Med' ? '⚖️' :
+              currentProfile.riskLevel === 'High' ? '🚀' :
+                currentProfile.riskLevel === 'Expert' ? '🎯' :
+                  currentProfile.riskLevel === 'Extreme' ? '⚡' : '📊';
+
+          const batchStart = assetBatchIndex;
+          const batchEnd = assetBatchIndex + currentBatch.length;
+          const totalAssets = selectedPairs.length;
+
+          addLog(`${profileEmoji} ${currentProfile.name.toUpperCase()} - Analisando ${batchStart} a ${batchEnd} de ${totalAssets} ativos (Limiar: ${currentProfile.confidenceThreshold}%)`, 'SYSTEM');
 
           // 2. Análise Técnica
+          let opportunities = 0;
+          let analyzed = 0;
+
           for (const symbol of currentBatch) {
             const candles = await fetchHistoricalCandles(symbol, '15m');
             if (!candles || candles.length < 50) {
-              addLog(`⚠️ ${symbol}: Dados insuficientes (${candles?.length || 0} candles)`, 'WARN');
+              addLog(`⚠️ ${symbol}: Dados insuficientes - Ignorado`, 'WARN');
               continue;
             }
 
+            analyzed++;
             const analysis = unifiedTechnicalAnalysis(candles, currentProfile);
+            const currentPrice = candles[candles.length - 1].close;
 
-            // Log detalhado de TODA análise para auditoria
-            const signalIcon = analysis.signal === 'LONG' ? '🟢' : analysis.signal === 'SHORT' ? '🔴' : '⚪';
+            // Log detalhado mostrando estado claro
             const confidenceStr = analysis.confidence.toFixed(0);
             const thresholdStr = currentProfile.confidenceThreshold.toString();
+            const isOpportunity = analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold;
 
-            addLog(`${signalIcon} [${currentProfile.name}] ${symbol}: ${analysis.signal} (${confidenceStr}%/${thresholdStr}%) ${analysis.reasons.join(', ')}`, 'INFO');
-
-            if (analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold) {
+            if (isOpportunity) {
+              opportunities++;
               const side = analysis.signal.includes('BUY') || analysis.signal === 'LONG' ? 'BUY' : 'SELL';
+              const sideEmoji = side === 'BUY' ? '🟢 LONG' : '🔴 SHORT';
 
-              addLog(`🎯 OPORTUNIDADE: ${symbol} [${side}] (${analysis.confidence.toFixed(0)}%) via ${currentProfile.name}`, 'SUCCESS');
+              addLog(`✅ IDENTIFICADO - ${symbol} ${sideEmoji} | Confiança: ${confidenceStr}% | Preço: $${currentPrice.toFixed(2)}`, 'SUCCESS');
+              addLog(`   📋 Razões: ${analysis.reasons.join(', ')}`, 'INFO');
 
               if (activeExchange) {
-                const price = candles[candles.length - 1].close;
+                const price = currentPrice;
                 const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
                 const tp = side === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100);
+                const positionValue = 10; // Default $10 position
 
-                addLog(`🚀 EXECUTANDO AUTO: ${symbol} @ $${price.toFixed(2)}...`, 'SYSTEM');
+                addLog(`🚀 ABRINDO ORDEM: ${symbol} @ $${price.toFixed(2)} | Valor: $${positionValue} | Alav: ${currentProfile.leverage}x`, 'SYSTEM');
+                addLog(`   📍 SL: $${sl.toFixed(2)} | TP: $${tp.toFixed(2)}`, 'INFO');
 
                 executeOrder({
                   symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
                   stopLossPrice: sl, takeProfitPrice: tp
                 }, activeExchange, currentProfile.name).then(res => {
                   if (res.success) {
-                    addLog(`✅ SUCESSO AUTO: ${symbol} - ID ${res.orderId}`, 'SUCCESS');
-                    notify('success', 'Ordem Auto', `Entrada em ${symbol} realizada.`);
+                    addLog(`✅ ORDEM EXECUTADA: ${symbol} ${side} | ID: ${res.orderId} | Entry: $${price.toFixed(2)}`, 'SUCCESS');
+                    notify('success', 'Ordem Automática', `${side} ${symbol} @ $${price.toFixed(2)}`);
                     fetchRealData();
                   } else {
-                    addLog(`❌ FALHA AUTO ${symbol}: ${res.message}`, 'ERROR');
+                    addLog(`❌ ORDEM FALHOU: ${symbol} | Erro: ${res.message}`, 'ERROR');
                   }
                 });
               }
+            } else {
+              // Log resumido para ativos sem oportunidade
+              const signalIcon = analysis.signal === 'LONG' ? '↗️' : analysis.signal === 'SHORT' ? '↘️' : '➖';
+              addLog(`${signalIcon} ${symbol}: ${analysis.signal || 'NEUTRAL'} (${confidenceStr}%/${thresholdStr}%) - Não atingiu limiar`, 'INFO');
             }
+          }
+
+          // Resumo do lote
+          if (opportunities === 0) {
+            addLog(`📊 ${currentProfile.name}: ${analyzed} ativos analisados - Nenhuma oportunidade identificada`, 'INFO');
+          } else {
+            addLog(`🎯 ${currentProfile.name}: ${opportunities} oportunidade(s) em ${analyzed} ativos analisados`, 'SUCCESS');
           }
           setProfileIndex(p => p + 1);
         } catch (error: any) {
