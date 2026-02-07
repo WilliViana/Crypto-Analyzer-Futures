@@ -27,6 +27,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
     const [orderTab, setOrderTab] = useState<'positive' | 'negative'>('positive');
     const [isClosing, setIsClosing] = useState(false);
+    const [isClosingAll, setIsClosingAll] = useState(false);
 
     useEffect(() => {
         if (totalBalance > 0) {
@@ -57,10 +58,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const bestTrade = useMemo(() => Math.max(0, ...trades.map(t => t.pnl)), [trades]);
     const worstTrade = useMemo(() => Math.min(0, ...trades.map(t => t.pnl)), [trades]);
 
-    // Get profile for an asset
+    // Get profile for an asset - improved lookup
     const getProfileForAsset = (symbol: string) => {
+        // 1. Check if asset has strategyName directly
+        const assetData = assets.find(a => a.symbol === symbol);
+        if (assetData?.strategyName) return assetData.strategyName;
+
+        // 2. Look in trades
         const trade = [...trades].reverse().find(t =>
-            t.status === 'OPEN' && (t.symbol === symbol || t.symbol.includes(symbol.replace('USDT', '')))
+            (t.symbol === symbol || t.symbol.includes(symbol.replace('USDT', ''))) &&
+            (t.status === 'OPEN' || !t.status)
         );
         return trade?.strategyName || 'Manual';
     };
@@ -100,6 +107,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             console.error('Close position error:', error);
         } finally {
             setIsClosing(false);
+        }
+    };
+
+    const handleCloseAllPositions = async () => {
+        const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+        if (!activeExchange || assets.length === 0) return;
+
+        setIsClosingAll(true);
+        try {
+            for (const asset of assets) {
+                const side = asset.amount > 0 ? 'SELL' : 'BUY';
+                await closePosition(asset.symbol, Math.abs(asset.amount), side as 'BUY' | 'SELL', activeExchange);
+            }
+            onRefresh?.();
+        } catch (error: any) {
+            console.error('Close all error:', error);
+        } finally {
+            setIsClosingAll(false);
         }
     };
 
@@ -256,8 +281,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <div
                             key={profile.id}
                             className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${profile.active
-                                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                    : 'bg-black/20 border-gray-700 text-gray-600'
+                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                                : 'bg-black/20 border-gray-700 text-gray-600'
                                 }`}
                         >
                             <div className={`w-2 h-2 rounded-full ${profile.active ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
@@ -298,8 +323,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <button
                             onClick={() => setOrderTab('positive')}
                             className={`flex-1 py-3 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors ${orderTab === 'positive'
-                                    ? 'bg-green-500/10 text-green-400 border-b-2 border-green-500'
-                                    : 'text-gray-500 hover:text-gray-300'
+                                ? 'bg-green-500/10 text-green-400 border-b-2 border-green-500'
+                                : 'text-gray-500 hover:text-gray-300'
                                 }`}
                         >
                             <TrendingUp size={14} />
@@ -308,8 +333,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <button
                             onClick={() => setOrderTab('negative')}
                             className={`flex-1 py-3 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors ${orderTab === 'negative'
-                                    ? 'bg-red-500/10 text-red-400 border-b-2 border-red-500'
-                                    : 'text-gray-500 hover:text-gray-300'
+                                ? 'bg-red-500/10 text-red-400 border-b-2 border-red-500'
+                                : 'text-gray-500 hover:text-gray-300'
                                 }`}
                         >
                             <TrendingDown size={14} />
@@ -344,7 +369,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 text-[10px] mt-1 border-t border-white/5 pt-2">
-                                        <div className="text-gray-400 uppercase">Preço: <span className="text-white font-mono font-bold">${asset.price.toFixed(2)}</span></div>
+                                        <div className="text-gray-400 uppercase">Investido: <span className="text-yellow-400 font-mono font-bold">${asset.initialMargin?.toFixed(2) || '—'}</span></div>
                                         <div className="text-gray-400 uppercase text-right">PnL: <span className={`font-mono font-bold ${asset.unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>{asset.unrealizedPnL >= 0 ? '+' : ''}{asset.unrealizedPnL.toFixed(2)}</span></div>
                                     </div>
                                 </div>
@@ -358,6 +383,20 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             </div>
                         )}
                     </div>
+
+                    {/* Close All Button */}
+                    {assets.length > 0 && (
+                        <div className="p-3 border-t border-[#2A303C]">
+                            <button
+                                onClick={handleCloseAllPositions}
+                                disabled={isClosingAll}
+                                className="w-full py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                            >
+                                <XCircle size={14} />
+                                {isClosingAll ? 'Fechando todas...' : `Fechar Todas (${assets.length})`}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -2,13 +2,14 @@
 import React from 'react';
 import { StrategyProfile, Language, Trade } from '../types';
 import { translations } from '../utils/translations';
-import { Shield, Scale, Rocket, Target, Zap, ArrowDown, Pencil, Plus, Info, HelpCircle } from 'lucide-react';
+import { Shield, Scale, Rocket, Target, Zap, ArrowDown, Pencil, Plus, Info, HelpCircle, Trash2 } from 'lucide-react';
 
 interface StrategyCardProps {
   profile: StrategyProfile;
   lang: Language;
   onEdit: (profile: StrategyProfile) => void;
   onToggle: (id: string) => void;
+  onDelete?: (id: string) => void;
   isAddButton?: boolean;
   onAdd?: () => void;
   trades?: Trade[];
@@ -33,7 +34,7 @@ const metricDescriptions: Record<string, string> = {
   confidence: "Nível mínimo de confiança do sinal para abrir uma ordem.",
 };
 
-const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, isAddButton, onAdd, trades = [] }) => {
+const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [] }) => {
   const t = translations[lang].strategy_card;
 
   // Calculate real win rate from trades
@@ -188,6 +189,16 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
         >
           <Pencil size={12} /> Config
         </button>
+
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(profile.id); }}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all text-[10px] font-bold"
+            title="Excluir perfil"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
       </div>
     </div>
   );

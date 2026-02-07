@@ -290,7 +290,7 @@ export default function App() {
     switch (activeTab) {
       case 'dashboard': return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} profiles={profiles} exchanges={exchanges} />;
       case 'settings': return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
-      case 'strategies': return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">{profiles.map(p => <StrategyCard key={p.id} profile={p} lang={lang} onEdit={setEditingProfile} onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))} trades={trades} />)}</div>;
+      case 'strategies': return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">{profiles.map(p => <StrategyCard key={p.id} profile={p} lang={lang} onEdit={setEditingProfile} onToggle={async (id) => { const newProfiles = profiles.map(x => x.id === id ? { ...x, active: !x.active } : x); setProfiles(newProfiles); const updated = newProfiles.find(x => x.id === id); if (session?.user?.id && updated) await saveStrategy(session.user.id, updated); }} onDelete={(id) => { if (confirm('Excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }} trades={trades} />)}</div>;
       case 'logs': return <AuditLog logs={logs} />;
       case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} trades={trades} exchanges={exchanges} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} />;
