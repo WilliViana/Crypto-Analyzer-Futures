@@ -125,7 +125,12 @@ export default function App() {
     // Initial session check
     const initSession = async () => {
       console.log('[AUTH] Checking initial session...');
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      // DEBUG: This alert will DEFINITELY show
+      if (typeof window !== 'undefined') {
+        console.warn('🔍 DEBUG SESSION:', session ? session.user.email : 'NO SESSION', error);
+      }
 
       if (session) {
         console.log('[AUTH] Session found:', session.user.email);
