@@ -18,6 +18,7 @@ import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { supabase } from './services/supabaseClient';
+import { loadAllUserData, saveStrategy, saveExchange, saveTrade, saveUserSettings } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
 import { Play, Square, Settings, Loader2 } from 'lucide-react';
 
@@ -101,10 +102,18 @@ export default function App() {
     const initSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          if (session) { setSession(session); setIsAuthenticated(true); }
-          setLoading(false);
+        if (mounted && session) {
+          setSession(session);
+          setIsAuthenticated(true);
+          // SYNC: Load all data from Supabase
+          const userData = await loadAllUserData(session.user.id);
+          if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
+          if (userData.strategies.length > 0) setProfiles(userData.strategies);
+          if (userData.trades.length > 0) setTrades(userData.trades);
+          if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+          addLog('[SYNC] Dados carregados do servidor.', 'INFO');
         }
+        if (mounted) setLoading(false);
       } catch (error) { setLoading(false); }
     };
     initSession();
