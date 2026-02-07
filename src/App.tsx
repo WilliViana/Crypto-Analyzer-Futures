@@ -98,6 +98,11 @@ export default function App() {
 
   // --- AUTH ---
   useEffect(() => {
+    // TEMPORARY DEBUG - This popup MUST appear on every page load
+    if (typeof window !== 'undefined') {
+      window.alert('DEBUG: Auth useEffect STARTED');
+    }
+
     let mounted = true;
 
     // Function to load user data
