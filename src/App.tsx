@@ -326,8 +326,32 @@ export default function App() {
   };
 
   const toggleRun = () => setIsRunning(!isRunning);
-  const handleLogin = (email: string) => { setIsAuthenticated(true); setSession({ user: { email } }); };
-  const handleLogout = () => { setIsAuthenticated(false); setSession(null); };
+
+  const handleLogin = async () => {
+    // Get real session from Supabase after login
+    const { data: { session: realSession } } = await supabase.auth.getSession();
+    if (realSession) {
+      setSession(realSession);
+      setIsAuthenticated(true);
+      // Load all user data from Supabase
+      const userData = await loadAllUserData(realSession.user.id);
+      if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
+      if (userData.strategies.length > 0) setProfiles(userData.strategies);
+      if (userData.trades.length > 0) setTrades(userData.trades);
+      if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+      addLog('[SYNC] Dados carregados do servidor.', 'INFO');
+    } else {
+      // Fallback for demo mode (no persistence)
+      setIsAuthenticated(true);
+      addLog('[AVISO] Modo Demo - dados não serão salvos.', 'WARN');
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAuthenticated(false);
+    setSession(null);
+  };
 
   if (loading) return <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
   if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
