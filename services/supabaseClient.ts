@@ -10,8 +10,15 @@ const env = (import.meta as any).env || {};
 export const SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://bhigvgfkttvjibvlyqpl.supabase.co';
 export const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_evRIn3L9b9XfvcfC6sCe2g_gjpkne1i';
 
-// Typed Supabase client for better TypeScript support
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Typed Supabase client with auth persistence enabled
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        persistSession: true,        // Store session in localStorage
+        autoRefreshToken: true,      // Auto-refresh tokens before expiry
+        detectSessionInUrl: true,    // Handle OAuth redirects
+        storageKey: 'crypto-analyzer-auth', // Unique storage key
+    }
+});
 
 // Helper function to get user profile
 export const getUserProfile = async (userId: string) => {
