@@ -9,6 +9,7 @@ import { StrategyProfile, Exchange, Trade } from '../types';
 // ============ EXCHANGES ============
 
 export const loadExchanges = async (userId: string): Promise<Exchange[]> => {
+    console.log('[SYNC] loadExchanges called for user:', userId);
     const { data, error } = await supabase
         .from('exchanges')
         .select('*')
@@ -19,15 +20,20 @@ export const loadExchanges = async (userId: string): Promise<Exchange[]> => {
         return [];
     }
 
-    return (data || []).map(row => ({
+    console.log('[SYNC] Raw exchanges from DB:', data);
+
+    const mapped = (data || []).map(row => ({
         id: row.id,
         name: row.name || 'Binance Futures',
-        type: row.type as any || 'binance_futures',
+        type: row.type as any || 'CEX',
         apiKey: row.api_key || '',
         apiSecret: row.api_secret || '',
         isTestnet: row.is_testnet || false,
         status: row.status as any || 'DISCONNECTED'
     }));
+
+    console.log('[SYNC] Mapped exchanges:', mapped);
+    return mapped;
 };
 
 export const saveExchange = async (userId: string, exchange: Exchange): Promise<boolean> => {
