@@ -1,5 +1,6 @@
 import { OrderRequest, Exchange, Trade, RealAccountData } from '../types';
 import { SUPABASE_URL, supabase } from './supabaseClient';
+import { addAuditLog, AUDIT_ACTIONS } from './auditService';
 
 function fixPrecision(value: number, precision: number): string {
   if (!value || isNaN(value)) return "0";
@@ -115,10 +116,29 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       // SL/TP logic here
     }
 
+    // Audit log for successful order
+    await addAuditLog(AUDIT_ACTIONS.ORDER_PLACED, 'SUCCESS', {
+      symbol: order.symbol,
+      side: order.side,
+      quantity: finalQty,
+      leverage: order.leverage,
+      orderId: res.orderId,
+      profileName
+    });
+
     return { success: true, message: `Ordem Executada! ID: ${res.orderId}`, orderId: res.orderId };
 
   } catch (e: any) {
     console.error("[EXECUTE ERROR]", e);
+
+    // Audit log for failed order
+    await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'ERROR', {
+      symbol: order.symbol,
+      side: order.side,
+      error: e.message,
+      profileName
+    });
+
     return { success: false, message: e.message || "Erro na execução" };
   }
 };
@@ -174,9 +194,25 @@ export const closePosition = async (
       }
     }
 
+    // Audit log for closed position
+    await addAuditLog(AUDIT_ACTIONS.ORDER_CLOSED, 'SUCCESS', {
+      symbol,
+      side,
+      quantity,
+      orderId: res.orderId
+    });
+
     return { success: true, message: `Posição fechada! ID: ${res.orderId}` };
   } catch (e: any) {
     console.error("[CLOSE POSITION ERROR]", e);
+
+    await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'ERROR', {
+      symbol,
+      side,
+      action: 'CLOSE_POSITION',
+      error: e.message
+    });
+
     return { success: false, message: e.message || "Erro ao fechar posição" };
   }
 };
