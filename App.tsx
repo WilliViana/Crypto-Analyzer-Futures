@@ -96,7 +96,7 @@ export default function App() {
   // Track when initial data load completes to prevent auto-save during load
   const dataLoadedRef = React.useRef(false);
   const lastSavedProfilesRef = React.useRef<string>('');
-  const lastSavedPairsRef = React.useRef<string>('');
+  const lastSavedSettingsRef = React.useRef<string>('');
 
   // Auto-save profiles to localStorage and Supabase
   useEffect(() => {
@@ -123,24 +123,26 @@ export default function App() {
     });
   }, [profiles]);
 
-  // Auto-save selectedPairs to Supabase (only after initial load)
+  // Auto-save user settings (selectedPairs + isRunning) to Supabase
   useEffect(() => {
-    if (!dataLoadedRef.current || !session?.user?.id || selectedPairs.length === 0) {
+    if (!dataLoadedRef.current || !session?.user?.id) {
       return;
     }
 
-    // Only save if pairs actually changed
-    const pairsJson = JSON.stringify(selectedPairs);
-    if (pairsJson === lastSavedPairsRef.current) {
+    // Create settings object to check for changes
+    const currentSettings = { selectedPairs, isRunning };
+    const settingsJson = JSON.stringify(currentSettings);
+
+    if (settingsJson === lastSavedSettingsRef.current) {
       return;
     }
-    lastSavedPairsRef.current = pairsJson;
+    lastSavedSettingsRef.current = settingsJson;
 
-    console.log('[SYNC] Saving selectedPairs to Supabase...');
-    saveUserSettings(session.user.id, { selectedPairs }).catch(err =>
+    console.log('[SYNC] Saving settings to Supabase...', currentSettings);
+    saveUserSettings(session.user.id, currentSettings).catch(err =>
       console.error('[SYNC] Save settings error:', err)
     );
-  }, [selectedPairs]);
+  }, [selectedPairs, isRunning]);
 
   useEffect(() => {
     let mounted = true;
@@ -166,11 +168,17 @@ export default function App() {
           if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
           if (userData.strategies.length > 0) setProfiles(userData.strategies);
           if (userData.trades.length > 0) setTrades(userData.trades);
-          if (userData.settings?.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+          if (userData.settings) {
+            if (userData.settings.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+            if (userData.settings.isRunning !== undefined) setIsRunning(userData.settings.isRunning);
+          }
 
           // Initialize lastSaved refs to prevent immediate re-save after load
           lastSavedProfilesRef.current = JSON.stringify(userData.strategies.map((p: any) => ({ id: p.id, active: p.active, name: p.name })));
-          lastSavedPairsRef.current = JSON.stringify(userData.settings?.selectedPairs || []);
+          lastSavedSettingsRef.current = JSON.stringify({
+            selectedPairs: userData.settings?.selectedPairs || ['BTCUSDT'],
+            isRunning: userData.settings?.isRunning || false
+          });
 
           // Mark data as loaded - this enables auto-save for future changes
           dataLoadedRef.current = true;

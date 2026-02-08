@@ -83,19 +83,26 @@ export const loadStrategies = async (userId: string): Promise<StrategyProfile[]>
     return (data || []).map(row => ({
         id: row.id,
         name: row.name || 'Perfil',
-        type: row.type_id as any || 'scalper',
-        riskLevel: row.risk_level as any || 'medium',
-        active: row.active || false,
         description: row.description || '',
+        active: row.active || false,
+        riskLevel: (row.risk_level || 'Medium') as any,
         confidenceThreshold: Number(row.confidence_threshold) || 50,
         leverage: Number(row.leverage) || 5,
         capital: Number(row.capital) || 1000,
         stopLoss: Number(row.stop_loss) || 2,
         takeProfit: Number(row.take_profit) || 4,
         maxDrawdown: Number(row.max_drawdown) || 10,
-        settings: row.settings || {},
-        workflowSteps: row.workflow_steps || ['Analisar Mercado', 'Verificar Indicadores', 'Executar Trade']
-    }));
+        // Default values for fields not in DB yet
+        icon: 'activity',
+        color: 'blue',
+        pnl: 0,
+        trades: 0,
+        winRate: 0,
+        workflowSteps: (row as any).workflow_steps || ['Analisar Mercado', 'Verificar Indicadores', 'Executar Trade'],
+        indicators: (row.settings as any)?.indicators || {},
+        useDivergences: (row.settings as any)?.useDivergences || false,
+        useCandlePatterns: (row.settings as any)?.useCandlePatterns || false
+    } as StrategyProfile));
 };
 
 export const saveStrategy = async (userId: string, strategy: StrategyProfile): Promise<boolean> => {
@@ -105,7 +112,6 @@ export const saveStrategy = async (userId: string, strategy: StrategyProfile): P
             id: strategy.id,
             user_id: userId,
             name: strategy.name,
-            type_id: strategy.type,
             risk_level: strategy.riskLevel,
             active: strategy.active,
             description: strategy.description,
@@ -115,9 +121,13 @@ export const saveStrategy = async (userId: string, strategy: StrategyProfile): P
             stop_loss: strategy.stopLoss,
             take_profit: strategy.takeProfit,
             max_drawdown: strategy.maxDrawdown,
-            settings: strategy.settings || {},
+            settings: {
+                indicators: strategy.indicators,
+                useDivergences: strategy.useDivergences,
+                useCandlePatterns: strategy.useCandlePatterns
+            },
             updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        } as any, { onConflict: 'id' });
 
     if (error) {
         console.error('[SYNC] Save strategy error:', error);
@@ -144,16 +154,16 @@ export const loadTrades = async (userId: string): Promise<Trade[]> => {
     return (data || []).map(row => ({
         id: row.id,
         symbol: row.symbol,
-        side: row.side as 'BUY' | 'SELL',
+        side: row.side as any, // Cast to match Trade type
         amount: Number(row.amount) || 0,
         entryPrice: Number(row.entry_price) || 0,
-        exitPrice: row.exit_price ? Number(row.exit_price) : undefined,
+        exitPrice: (row as any).exit_price ? Number((row as any).exit_price) : undefined,
         pnl: Number(row.pnl) || 0,
-        status: row.status as 'OPEN' | 'CLOSED' || 'OPEN',
+        status: row.status as 'OPEN' | 'CLOSED',
         strategyId: row.strategy_id || undefined,
         strategyName: row.strategy_name || undefined,
         timestamp: row.created_at || new Date().toISOString()
-    }));
+    } as Trade));
 };
 
 export const saveTrade = async (userId: string, trade: Partial<Trade> & { symbol: string; side: string }): Promise<string | null> => {
@@ -189,7 +199,7 @@ export const updateTrade = async (tradeId: string, updates: Partial<{ status: st
             status: updates.status,
             pnl: updates.pnl,
             exit_price: updates.exitPrice
-        })
+        } as any)
         .eq('id', tradeId);
 
     return !error;
@@ -197,7 +207,7 @@ export const updateTrade = async (tradeId: string, updates: Partial<{ status: st
 
 // ============ USER SETTINGS ============
 
-export const loadUserSettings = async (userId: string): Promise<{ selectedPairs: string[] } | null> => {
+export const loadUserSettings = async (userId: string): Promise<{ selectedPairs: string[], isRunning: boolean } | null> => {
     const { data, error } = await supabase
         .from('user_settings')
         .select('*')
@@ -207,18 +217,20 @@ export const loadUserSettings = async (userId: string): Promise<{ selectedPairs:
     if (error || !data) return null;
 
     return {
-        selectedPairs: data.selected_pairs || ['BTCUSDT']
+        selectedPairs: data.selected_pairs || ['BTCUSDT'],
+        isRunning: (data as any).is_running || false
     };
 };
 
-export const saveUserSettings = async (userId: string, settings: { selectedPairs: string[] }): Promise<boolean> => {
+export const saveUserSettings = async (userId: string, settings: { selectedPairs: string[], isRunning: boolean }): Promise<boolean> => {
     const { error } = await supabase
         .from('user_settings')
         .upsert({
             user_id: userId,
             selected_pairs: settings.selectedPairs,
+            is_running: settings.isRunning,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+        } as any, { onConflict: 'user_id' });
 
     return !error;
 };

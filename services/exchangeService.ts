@@ -113,7 +113,56 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
     }
 
     if (res.orderId && (order.stopLossPrice || order.takeProfitPrice)) {
-      // SL/TP logic here
+      const tpSlOrders: any[] = [];
+      const closeSide = order.side === 'BUY' ? 'SELL' : 'BUY';
+
+      // Common params for TP/SL
+      const commonParams = {
+        symbol: order.symbol,
+        side: closeSide,
+        quantity: fixPrecision(finalQty, qtyPrecision),
+        reduceOnly: 'true',
+        workingType: 'MARK_PRICE'
+      };
+
+      if (order.stopLossPrice) {
+        tpSlOrders.push({
+          ...commonParams,
+          type: 'STOP_MARKET',
+          stopPrice: fixPrecision(order.stopLossPrice, 2), // TODO: Fetch price precision
+          timeInForce: 'GTC'
+        });
+      }
+
+      if (order.takeProfitPrice) {
+        tpSlOrders.push({
+          ...commonParams,
+          type: 'TAKE_PROFIT_MARKET',
+          stopPrice: fixPrecision(order.takeProfitPrice, 2),
+          timeInForce: 'GTC'
+        });
+      }
+
+      if (positionSide !== 'BOTH') {
+        tpSlOrders.forEach(o => o.positionSide = positionSide);
+      } else {
+        tpSlOrders.forEach(o => o.reduceOnly = 'true');
+      }
+
+      // Execute TP/SL orders sequentially to avoid batch limit/errors complexity for now
+      for (const o of tpSlOrders) {
+        try {
+          await callBinanceProxy('/fapi/v1/order', 'POST', o, exchange);
+          console.log(`[TP/SL] Placed ${o.type} at ${o.stopPrice}`);
+        } catch (err: any) {
+          console.error(`[TP/SL ERROR] Failed to place ${o.type}:`, err);
+          await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
+            symbol: order.symbol,
+            action: `PLACE_${o.type}`,
+            error: err.message
+          });
+        }
+      }
     }
 
     // Audit log for successful order
