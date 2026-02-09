@@ -207,8 +207,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
 
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-xs text-gray-500 uppercase font-bold mb-2">Nome de Exibição</label>
+                        <label htmlFor="displayName" className="block text-xs text-gray-500 uppercase font-bold mb-2">Nome de Exibição</label>
                         <input
+                            id="displayName"
                             type="text"
                             value={profile.displayName}
                             onChange={(e) => setProfile(prev => ({ ...prev, displayName: e.target.value }))}
@@ -232,10 +233,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                     </div>
 
                     <div>
-                        <label className="block text-xs text-gray-500 uppercase font-bold mb-2">Telefone</label>
+                        <label htmlFor="phone" className="block text-xs text-gray-500 uppercase font-bold mb-2">Telefone</label>
                         <div className="relative">
                             <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
                             <input
+                                id="phone"
                                 type="tel"
                                 value={profile.phone}
                                 onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
