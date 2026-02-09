@@ -130,36 +130,36 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, lang, setLang }) => 
                         {mode === 'register' && (
                             <div className="animate-fade-in space-y-6">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Nome Completo</label>
+                                    <label htmlFor="fullName" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Nome Completo</label>
                                     <div className="relative group">
                                         <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors" size={18} />
-                                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="Seu nome" required />
+                                        <input id="fullName" type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="Seu nome" required />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Código Admin (Opcional)</label>
+                                    <label htmlFor="adminCode" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Código Admin (Opcional)</label>
                                     <div className="relative group">
                                         <Hexagon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
-                                        <input type="text" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary outline-none transition-all" placeholder="Código de Convite" />
+                                        <input id="adminCode" type="text" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary outline-none transition-all" placeholder="Código de Convite" />
                                     </div>
                                 </div>
                             </div>
                         )}
 
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Identificador de E-mail</label>
+                            <label htmlFor="email" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Identificador de E-mail</label>
                             <div className="relative group">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors" size={18} />
-                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="exemplo@trading.com" required />
+                                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="exemplo@trading.com" required />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Chave de Acesso (Senha)</label>
+                            <label htmlFor="password" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Chave de Acesso (Senha)</label>
                             <div className="relative group">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors" size={18} />
-                                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-12 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="••••••••" required />
-                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white">
+                                <input id="password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-12 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="••••••••" required />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white">
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
@@ -167,8 +167,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, lang, setLang }) => 
 
                         {mode === 'register' && (
                             <div className="animate-fade-in">
-                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Confirmar Chave</label>
-                                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 px-4 text-white focus:border-primary outline-none" placeholder="Repita a senha" required />
+                                <label htmlFor="confirmPassword" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Confirmar Chave</label>
+                                <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 px-4 text-white focus:border-primary outline-none" placeholder="Repita a senha" required />
                             </div>
                         )}
 
