@@ -260,8 +260,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lang }) => {
                                             </td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-0.5 rounded text-xs font-bold border ${user.role === 'admin'
-                                                        ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                                                    ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                                                    : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                                                     }`}>
                                                     {user.role || 'user'}
                                                 </span>
@@ -347,10 +347,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lang }) => {
                                         {log.created_at ? new Date(log.created_at).toLocaleTimeString() : 'N/A'}
                                     </span>
                                     <span className={`font-bold text-xs px-2 py-0.5 rounded ${log.event?.includes('ERROR') || log.event?.includes('FAIL')
-                                            ? 'bg-red-500/20 text-red-500'
-                                            : log.event?.includes('WARN')
-                                                ? 'bg-yellow-500/20 text-yellow-500'
-                                                : 'bg-blue-500/20 text-blue-500'
+                                        ? 'bg-red-500/20 text-red-500'
+                                        : log.event?.includes('WARN')
+                                            ? 'bg-yellow-500/20 text-yellow-500'
+                                            : 'bg-blue-500/20 text-blue-500'
                                         }`}>
                                         {log.event?.includes('ERROR') ? 'ERROR' : log.event?.includes('WARN') ? 'WARN' : 'INFO'}
                                     </span>

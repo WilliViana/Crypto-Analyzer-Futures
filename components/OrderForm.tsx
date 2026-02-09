@@ -126,8 +126,8 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
             key={mode}
             onClick={() => setOrderMode(mode)}
             className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${orderMode === mode
-                ? 'bg-indigo-600 text-white shadow-lg'
-                : 'text-gray-400 hover:text-white hover:bg-[#2A303C]'
+              ? 'bg-indigo-600 text-white shadow-lg'
+              : 'text-gray-400 hover:text-white hover:bg-[#2A303C]'
               }`}
           >
             {mode === 'STOP_LIMIT' ? 'Stop Limit' : mode}
@@ -140,8 +140,8 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
         <button
           onClick={() => setSide('BUY')}
           className={`py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${side === 'BUY'
-              ? 'bg-green-600 text-white shadow-lg shadow-green-900/30'
-              : 'bg-[#1A2530] text-gray-400 hover:bg-[#253540] border border-green-900/30'
+            ? 'bg-green-600 text-white shadow-lg shadow-green-900/30'
+            : 'bg-[#1A2530] text-gray-400 hover:bg-[#253540] border border-green-900/30'
             }`}
         >
           <TrendingUp size={16} />
@@ -150,8 +150,8 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
         <button
           onClick={() => setSide('SELL')}
           className={`py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${side === 'SELL'
-              ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
-              : 'bg-[#2A1A1A] text-gray-400 hover:bg-[#3A2525] border border-red-900/30'
+            ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
+            : 'bg-[#2A1A1A] text-gray-400 hover:bg-[#3A2525] border border-red-900/30'
             }`}
         >
           <TrendingDown size={16} />
@@ -221,8 +221,8 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
               key={val}
               onClick={() => setAmountUSD(val.toString())}
               className={`flex-1 py-1 text-xs rounded ${amountUSD === val.toString()
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-[#1A1F2E] text-gray-400 hover:bg-[#2A303C]'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-[#1A1F2E] text-gray-400 hover:bg-[#2A303C]'
                 }`}
             >
               ${val}
@@ -250,8 +250,8 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
               key={val}
               onClick={() => setLeverage(val)}
               className={`flex-1 py-1 text-xs rounded font-bold ${leverage === val
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-[#1A1F2E] text-gray-400 hover:bg-[#2A303C]'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-[#1A1F2E] text-gray-400 hover:bg-[#2A303C]'
                 }`}
             >
               {val}x
