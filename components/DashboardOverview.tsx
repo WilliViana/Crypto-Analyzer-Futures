@@ -43,6 +43,46 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     // Separate orders by PnL
     const positiveOrders = useMemo(() => assets.filter(a => a.unrealizedPnL >= 0), [assets]);
     const negativeOrders = useMemo(() => assets.filter(a => a.unrealizedPnL < 0), [assets]);
+    // const displayedOrders... (keeping this part for context if needed, but the replace checks lines)
+
+    // FETCH HISTORY FROM SUPABASE
+    const [historyData, setHistoryData] = useState<{ time: string, value: number, original_ts: string }[]>([]);
+    const [timeRange, setTimeRange] = useState<'1H' | '1D' | '1W' | '1M' | 'ALL'>('1D');
+
+    useEffect(() => {
+        const fetchHistory = async () => {
+            const { supabase } = await import('../services/supabaseClient'); // Dynamic import to avoid cycles/mock issues
+
+            let query = supabase.from('balance_history').select('total_balance, timestamp').order('timestamp', { ascending: true });
+
+            // Time Filters
+            const now = new Date();
+            if (timeRange === '1H') now.setHours(now.getHours() - 1);
+            if (timeRange === '1D') now.setDate(now.getDate() - 1);
+            if (timeRange === '1W') now.setDate(now.getDate() - 7);
+            if (timeRange === '1M') now.setMonth(now.getMonth() - 1);
+
+            if (timeRange !== 'ALL') {
+                query = query.gte('timestamp', now.toISOString());
+            }
+
+            const { data } = await query;
+
+            if (data && data.length > 0) {
+                const formatted = data.map((d: any) => ({
+                    time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    value: parseFloat(d.total_balance),
+                    original_ts: d.timestamp
+                }));
+                setHistoryData(formatted);
+            } else {
+                // Fallback to session history if no data
+                if (sessionHistory.length > 0) setHistoryData(sessionHistory as any);
+            }
+        };
+        fetchHistory();
+    }, [timeRange, sessionHistory]); // Update when session history updates or filter changes
+
     const displayedOrders = orderTab === 'positive' ? positiveOrders : negativeOrders;
 
     // Calculate stats
@@ -296,10 +336,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Equity Curve */}
                 <div className="lg:col-span-2 bg-surface border border-card-border rounded-xl p-6 shadow-lg flex flex-col h-[350px]">
-                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase"><TrendingUp size={16} className="text-primary" /> Curva de Patrimônio</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase"><TrendingUp size={16} className="text-primary" /> Curva de Patrimônio</h3>
+                        <div className="flex gap-1 bg-black/20 p-1 rounded-lg">
+                            {['1H', '1D', '1W', '1M', 'ALL'].map((range) => (
+                                <button
+                                    key={range}
+                                    onClick={() => setTimeRange(range as any)}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${timeRange === range ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                >
+                                    {range}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="flex-1 min-h-0 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={sessionHistory}>
+                            <AreaChart data={historyData.length > 0 ? historyData : sessionHistory}>
                                 <defs>
                                     <linearGradient id="colorEq" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -307,10 +361,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#2A303C" vertical={false} />
-                                <XAxis dataKey="time" tick={{ fill: '#6B7280', fontSize: 10 }} />
-                                <YAxis domain={['auto', 'auto']} tick={{ fill: '#6B7280', fontSize: 10 }} />
-                                <Tooltip contentStyle={{ backgroundColor: '#151A25', borderColor: '#2A303C' }} />
-                                <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#colorEq)" />
+                                <XAxis dataKey="time" tick={{ fill: '#6B7280', fontSize: 10 }} minTickGap={30} />
+                                <YAxis domain={['auto', 'auto']} tick={{ fill: '#6B7280', fontSize: 10 }} width={40} />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#151A25', borderColor: '#2A303C', fontSize: '12px' }}
+                                    labelStyle={{ color: '#9CA3AF' }}
+                                    formatter={(value: any) => [`$${value.toLocaleString()}`, 'Saldo']}
+                                />
+                                <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#colorEq)" animationDuration={500} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
