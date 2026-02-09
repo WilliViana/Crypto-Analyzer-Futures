@@ -3,12 +3,20 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
 
 // Safe access to environment variables to prevent runtime crashes
-// if import.meta.env is undefined in certain environments.
-const env = (import.meta as any).env || {};
+// Supports both Vite (import.meta.env) and Node.js (process.env)
+const getEnv = (key: string, fallback: string): string => {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+        return (import.meta as any).env[key];
+    }
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+        return process.env[key] as string;
+    }
+    return fallback;
+};
 
 // Use environment variables if available, otherwise fallback to the provided keys.
-export const SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://bhigvgfkttvjibvlyqpl.supabase.co';
-export const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
+export const SUPABASE_URL = getEnv('VITE_SUPABASE_URL', 'https://bhigvgfkttvjibvlyqpl.supabase.co');
+export const SUPABASE_ANON_KEY = getEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s');
 
 // Typed Supabase client with auth persistence enabled
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
