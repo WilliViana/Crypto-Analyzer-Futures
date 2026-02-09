@@ -189,6 +189,7 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
                 className="w-full bg-[#0B0E14] border border-[#2A303C] rounded-lg py-2 px-3 text-white font-mono focus:border-indigo-500 outline-none"
               />
               <button
+                aria-label="Usar último preço"
                 onClick={() => setLimitPrice(currentPrice.toFixed(2))}
                 className="absolute right-2 top-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-500 px-2 py-1 rounded text-white font-bold"
               >

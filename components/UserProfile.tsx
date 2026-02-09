@@ -185,6 +185,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                             accept="image/*"
                             onChange={handleAvatarChange}
                             className="hidden"
+                            aria-label="Upload avatar"
                         />
                     </div>
                     <div className="flex-1">
@@ -278,6 +279,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                         <button
                             type="button"
                             onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            aria-label={showCurrentPassword ? "Hide password" : "Show password"}
                             className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
                         >
                             {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -338,6 +340,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                         <button
                             onClick={handleToggle2FA}
                             disabled={twoFALoading}
+                            aria-label="Toggle 2FA"
                             className={`relative w-14 h-7 rounded-full transition-colors ${twoFAEnabled ? 'bg-green-500' : 'bg-gray-700'
                                 }`}
                         >

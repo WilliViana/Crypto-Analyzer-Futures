@@ -150,7 +150,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                     {profileName}
                                 </div>
                             </div>
-                            <button onClick={onClose} className="bg-black/20 hover:bg-white/10 p-2 rounded-full text-gray-400 hover:text-white transition-colors"><X size={20} /></button>
+                            <button onClick={onClose} aria-label="Close" className="bg-black/20 hover:bg-white/10 p-2 rounded-full text-gray-400 hover:text-white transition-colors"><X size={20} /></button>
                         </div>
                     </div>
 

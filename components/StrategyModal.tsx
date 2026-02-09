@@ -79,7 +79,7 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                             <span className="text-[10px] text-gray-500 font-mono">NEURAL CONFIGURATION PANEL</span>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"><X size={20} /></button>
+                    <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"><X size={20} /></button>
                 </div>
 
                 {/* Info Grid */}
@@ -100,6 +100,7 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                                 value={formData.riskLevel}
                                 onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value })}
                                 className="w-full bg-[#151A25] border border-[#2A303C] rounded-lg py-2 px-4 text-white text-sm focus:border-primary focus:outline-none appearance-none"
+                                aria-label="Risk Level"
                             >
                                 <option value="Low">Low</option>
                                 <option value="Med">Moderate</option>
@@ -166,7 +167,7 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                                     <div key={key} className={`p-4 rounded-xl border transition-all ${config.enabled ? 'bg-surface border-primary/30' : 'bg-black/20 border-card-border opacity-50'}`}>
                                         <div className="flex items-center justify-between mb-3">
                                             <div className="flex items-center gap-3">
-                                                <button onClick={() => toggleIndicator(key)}>
+                                                <button onClick={() => toggleIndicator(key)} aria-label={`Toggle ${key}`}>
                                                     {config.enabled ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-600" />}
                                                 </button>
                                                 <div>
@@ -181,6 +182,7 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                                                         min="0" max="40"
                                                         value={config.weight}
                                                         onChange={(e) => updateIndicatorWeight(key, parseInt(e.target.value))}
+                                                        aria-label={`Weight for ${key}`}
                                                         className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary"
                                                     />
                                                 </div>
@@ -259,7 +261,7 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
                                     <h4 className="font-bold text-white text-sm">Divergências Estendidas</h4>
                                     <p className="text-[10px] text-gray-500">Detecta divergências entre preço e indicadores em 3 timeframes.</p>
                                 </div>
-                                <button onClick={() => setFormData(p => ({ ...p, useDivergences: !p.useDivergences }))}>
+                                <button onClick={() => setFormData(p => ({ ...p, useDivergences: !p.useDivergences }))} aria-label="Toggle Divergences">
                                     {formData.useDivergences ? <ToggleRight size={32} className="text-green-500" /> : <ToggleLeft size={32} className="text-gray-600" />}
                                 </button>
                             </div>

@@ -154,7 +154,7 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
                             <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider">
                                 <ShieldCheck className="text-primary" /> Conectar {selectedExchange.name}
                             </div>
-                            <button onClick={() => setSelectedExchange(null)}><X size={20} /></button>
+                            <button onClick={() => setSelectedExchange(null)} aria-label="Close"><X size={20} /></button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div className="flex items-center justify-between p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl mb-2">
@@ -164,6 +164,7 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
                                 </div>
                                 <button
                                     onClick={() => setIsTestnet(!isTestnet)}
+                                    aria-label="Toggle Testnet"
                                     className={`w-10 h-5 rounded-full relative transition-colors ${isTestnet ? 'bg-yellow-500' : 'bg-gray-700'}`}
                                 >
                                     <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isTestnet ? 'right-1' : 'left-1'}`}></div>

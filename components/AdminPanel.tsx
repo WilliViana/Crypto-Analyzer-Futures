@@ -274,7 +274,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lang }) => {
                                             </td>
                                             <td className="p-4 font-mono text-xs">{formatTimeAgo(user.updated_at)}</td>
                                             <td className="p-4 text-right">
-                                                <button className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"><MoreHorizontal size={16} /></button>
+                                                <button aria-label="More options" className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"><MoreHorizontal size={16} /></button>
                                             </td>
                                         </tr>
                                     ))
