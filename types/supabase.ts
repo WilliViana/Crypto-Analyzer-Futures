@@ -311,16 +311,19 @@ export type Database = {
             }
             user_settings: {
                 Row: {
+                    is_running: boolean | null
                     selected_pairs: string[] | null
                     updated_at: string | null
                     user_id: string
                 }
                 Insert: {
+                    is_running?: boolean | null
                     selected_pairs?: string[] | null
                     updated_at?: string | null
                     user_id: string
                 }
                 Update: {
+                    is_running?: boolean | null
                     selected_pairs?: string[] | null
                     updated_at?: string | null
                     user_id?: string

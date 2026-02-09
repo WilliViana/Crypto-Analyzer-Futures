@@ -241,7 +241,7 @@ export interface UserData {
     exchanges: Exchange[];
     strategies: StrategyProfile[];
     trades: Trade[];
-    settings: { selectedPairs: string[] };
+    settings: { selectedPairs: string[], isRunning: boolean };
 }
 
 export const loadAllUserData = async (userId: string): Promise<UserData> => {
@@ -264,6 +264,6 @@ export const loadAllUserData = async (userId: string): Promise<UserData> => {
         exchanges,
         strategies,
         trades,
-        settings: settings || { selectedPairs: ['BTCUSDT'] }
+        settings: settings || { selectedPairs: ['BTCUSDT'], isRunning: false }
     };
 };
