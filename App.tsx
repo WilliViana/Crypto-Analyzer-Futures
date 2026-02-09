@@ -272,6 +272,11 @@ export default function App() {
           if (!currentProfile.active) { setProfileIndex(p => p + 1); return; }
 
           const currentBatch = selectedPairs.slice(assetBatchIndex, assetBatchIndex + BATCH_SIZE);
+
+          if (currentBatch.length > 0) {
+            addLog(`CICLO: Analisando ${currentBatch.length} ativos com perfil ${currentProfile.name}...`, 'INFO');
+          }
+
           for (const symbol of currentBatch) {
             const candles = await fetchHistoricalCandles(symbol, '15m');
             if (!candles || candles.length < 50) continue;
@@ -280,7 +285,8 @@ export default function App() {
 
             if (analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold) {
               const side = analysis.signal;
-              addLog(`GATILHO: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%)`, 'SUCCESS');
+              const reasons = analysis.details.join(', ');
+              addLog(`GATILHO: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
 
               const price = candles[candles.length - 1].close;
               const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
@@ -295,6 +301,8 @@ export default function App() {
                   fetchRealData();
                 }
               });
+            } else if (analysis.confidence > 20) {
+              addLog(`MONITORANDO: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - ${analysis.details.join(', ')}`, 'INFO');
             }
           }
           setProfileIndex(p => p + 1);
@@ -355,7 +363,17 @@ export default function App() {
                 isTopPerformer={hasPositivePnL && p.id === topPerformerId}
               />
             ))}
-            <StrategyCard isAddButton={true} onAdd={() => setEditingProfile(INITIAL_PROFILES_BASE[0])} lang={lang} profile={profiles[0]} onEdit={() => { }} onToggle={() => { }} />
+            <StrategyCard
+              isAddButton={true}
+              onAdd={() => {
+                const newId = `custom_${Date.now()}`;
+                setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false });
+              }}
+              lang={lang}
+              profile={profiles[0]}
+              onEdit={() => { }}
+              onToggle={() => { }}
+            />
           </div>
         );
       case 'analysis':
@@ -401,7 +419,14 @@ export default function App() {
           {renderContent()}
         </div>
       </main>
-      {editingProfile && <StrategyModal profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={(newP) => { setProfiles(prev => prev.map(p => p.id === newP.id ? newP : p)); setEditingProfile(null); }} />}
+      {editingProfile && <StrategyModal profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={(newP) => {
+        setProfiles(prev => {
+          const exists = prev.some(p => p.id === newP.id);
+          if (exists) return prev.map(p => p.id === newP.id ? newP : p);
+          return [...prev, newP];
+        });
+        setEditingProfile(null);
+      }} />}
       {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`SISTEMA: Lista de ativos atualizada.`, 'INFO'); }} />}
       <ChatBot lang={lang} marketData={{ price: 0, change24h: 0, rsi: 50, macd: 0, bollingerState: 'Middle', volume: 0, vwap: 0, atr: 0, stochasticK: 50, stochasticD: 50, macdSignal: 0, macdHist: 0 }} symbol="BTC" />
     </div>
