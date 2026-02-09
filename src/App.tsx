@@ -284,14 +284,11 @@ export default function App() {
                     if (session?.user?.id) {
                       const newTrade: Trade = {
                         id: res.orderId || `trade_${Date.now()}`,
+                        strategyId: currentProfile.id,
                         symbol,
                         side: (side === 'BUY' ? 'LONG' : 'SHORT') as 'LONG' | 'SHORT',
-                        price,
-                        quantity: positionValue / price,
-                        initialMargin: positionValue,
-                        leverage: currentProfile.leverage,
-                        stopLoss: sl,
-                        takeProfit: tp,
+                        entryPrice: price,
+                        amount: positionValue / price,
                         pnl: 0,
                         status: 'OPEN',
                         timestamp: new Date().toISOString(),
