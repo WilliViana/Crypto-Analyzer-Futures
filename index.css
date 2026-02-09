@@ -1,0 +1,33 @@
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #0B0E14;
+  color: #E2E8F0;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes glow {
+  0%, 100% { filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.2)); }
+  50% { filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.4)); }
+}
+
+.logo-glow {
+  animation: glow 4s infinite ease-in-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
