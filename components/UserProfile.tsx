@@ -40,14 +40,38 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
     }, []);
 
     const loadUserProfile = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            setProfile({
-                displayName: user.user_metadata?.display_name || user.email?.split('@')[0] || '',
-                email: user.email || '',
-                phone: user.phone || '',
-                avatarUrl: user.user_metadata?.avatar_url || '',
-            });
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                // 1. Tentar buscar da tabela 'profiles'
+                const { data: profileData, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+
+                // Explicit cast to avoid TS errors until types are regenerated
+                const typedProfile = profileData as { full_name?: string; phone?: string; avatar_url?: string } | null;
+
+                if (typedProfile) {
+                    setProfile({
+                        displayName: typedProfile.full_name || user.user_metadata?.display_name || '',
+                        email: user.email || '',
+                        phone: typedProfile.phone || user.phone || '',
+                        avatarUrl: typedProfile.avatar_url || user.user_metadata?.avatar_url || '',
+                    });
+                } else {
+                    // Fallback para metadados se não houver perfil
+                    setProfile({
+                        displayName: user.user_metadata?.display_name || user.email?.split('@')[0] || '',
+                        email: user.email || '',
+                        phone: user.phone || '',
+                        avatarUrl: user.user_metadata?.avatar_url || '',
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar perfil:', error);
         }
     };
 
@@ -59,37 +83,87 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Convert to base64 for simple storage
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64 = reader.result as string;
-            setProfile(prev => ({ ...prev, avatarUrl: base64 }));
+        // Validar tamanho (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            showMessage('error', 'A imagem deve ter no máximo 2MB');
+            return;
+        }
 
-            // Save to Supabase user metadata
-            const { error } = await supabase.auth.updateUser({
-                data: { avatar_url: base64 }
+        setLoading(true);
+        try {
+            const user = (await supabase.auth.getUser()).data.user;
+            if (!user) throw new Error('Usuário não autenticado');
+
+            const fileExt = file.name.split('.').pop();
+            const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+            // 1. Upload to Storage
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file, { upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            // 2. Get Public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            setProfile(prev => ({ ...prev, avatarUrl: publicUrl }));
+
+            // 3. Update Auth Metadata
+            const { error: authError } = await supabase.auth.updateUser({
+                data: { avatar_url: publicUrl }
             });
+            if (authError) throw authError;
 
-            if (error) {
-                showMessage('error', 'Erro ao salvar foto');
-            } else {
-                showMessage('success', 'Foto atualizada!');
-            }
-        };
-        reader.readAsDataURL(file);
+            // 4. Update Profiles Table (Sync)
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                    id: user.id,
+                    avatar_url: publicUrl,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (profileError) console.error('Erro ao sincronizar perfil:', profileError);
+
+            showMessage('success', 'Foto atualizada com sucesso!');
+        } catch (error: any) {
+            console.error(error);
+            showMessage('error', 'Erro ao fazer upload da imagem');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSaveProfile = async () => {
         setLoading(true);
         try {
-            const { error } = await supabase.auth.updateUser({
+            const user = (await supabase.auth.getUser()).data.user;
+            if (!user) throw new Error('Usuário não autenticado');
+
+            // 1. Update Auth Metadata
+            const { error: authError } = await supabase.auth.updateUser({
                 data: {
                     display_name: profile.displayName,
                     phone: profile.phone
                 }
             });
+            if (authError) throw authError;
 
-            if (error) throw error;
+            // 2. Update Profiles Table
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                    id: user.id,
+                    full_name: profile.displayName,
+                    phone: profile.phone,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (profileError) throw profileError;
+
             showMessage('success', 'Perfil atualizado com sucesso!');
         } catch (error: any) {
             showMessage('error', error.message || 'Erro ao atualizar perfil');
