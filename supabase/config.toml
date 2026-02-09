@@ -1,0 +1,4 @@
+project_id = "bhigvgfkttvjibvlyqpl"
+
+[functions.market-scanner]
+verify_jwt = false
