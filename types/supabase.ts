@@ -39,6 +39,36 @@ export type Database = {
                 }
                 Relationships: []
             }
+            audit_logs: {
+                Row: {
+                    created_at: string
+                    event: string
+                    id: string
+                    level: string
+                    action: string
+                    details: Json | null
+                    user_id: string
+                }
+                Insert: {
+                    created_at?: string
+                    event?: string
+                    id?: string
+                    level?: string
+                    action?: string
+                    details?: Json | null
+                    user_id: string
+                }
+                Update: {
+                    created_at?: string
+                    event?: string
+                    id?: string
+                    level?: string
+                    action?: string
+                    details?: Json | null
+                    user_id?: string
+                }
+                Relationships: []
+            }
             exchanges: {
                 Row: {
                     api_key: string | null
@@ -357,3 +387,4 @@ export type Exchange = Tables<'exchanges'>
 export type Position = Tables<'positions'>
 export type UserSettings = Tables<'user_settings'>
 export type AuthAudit = Tables<'auth_audit'>
+export type AuditLog = Tables<'audit_logs'>
