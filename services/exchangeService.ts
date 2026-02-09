@@ -19,8 +19,11 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
 
   if (!response.ok) {
     const txt = await response.text();
-    console.error("[PROXY FAIL]", txt);
-    throw new Error(`Proxy: ${txt}`);
+    console.error("[PROXY FAIL]", proxyUrl, response.status, txt);
+    if (response.status === 404) {
+      throw new Error(`Função Proxy não encontrada em: ${proxyUrl}. Verifique o deploy.`);
+    }
+    throw new Error(`Proxy (${response.status}): ${txt}`);
   }
 
   const data = await response.json();

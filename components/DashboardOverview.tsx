@@ -53,7 +53,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         const fetchHistory = async () => {
             const { supabase } = await import('../services/supabaseClient'); // Dynamic import to avoid cycles/mock issues
 
-            let query = supabase.from('balance_history').select('total_balance, timestamp').order('timestamp', { ascending: true });
+            let query = supabase.from('balance_history').select('total_balance, created_at').order('created_at', { ascending: true });
 
             // Time Filters
             const now = new Date();
@@ -63,16 +63,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             if (timeRange === '1M') now.setMonth(now.getMonth() - 1);
 
             if (timeRange !== 'ALL') {
-                query = query.gte('timestamp', now.toISOString());
+                query = query.gte('created_at', now.toISOString());
             }
 
             const { data } = await query;
 
             if (data && data.length > 0) {
                 const formatted = data.map((d: any) => ({
-                    time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     value: parseFloat(d.total_balance),
-                    original_ts: d.timestamp
+                    original_ts: d.created_at
                 }));
                 setHistoryData(formatted);
             } else {

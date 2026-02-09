@@ -95,6 +95,7 @@ export default function App() {
 
   // Track when initial data load completes to prevent auto-save during load
   const dataLoadedRef = React.useRef(false);
+  const lastUserIdRef = React.useRef<string | null>(null);
   const lastSavedProfilesRef = React.useRef<string>('');
   const lastSavedSettingsRef = React.useRef<string>('');
 
@@ -214,10 +215,15 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[AUTH] State change:', event, session?.user?.email);
 
-      if (event === 'SIGNED_IN' && session && !dataLoaded) {
-        await loadUserDataAndSetState(session);
+      if (event === 'SIGNED_IN' && session) {
+        // Only load if not already loaded or if user changed
+        if (!dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+          lastUserIdRef.current = session.user.id;
+          await loadUserDataAndSetState(session);
+        }
       } else if (event === 'SIGNED_OUT') {
-        dataLoaded = false;
+        dataLoadedRef.current = false;
+        lastUserIdRef.current = null;
         setSession(null);
         setIsAuthenticated(false);
         setExchanges([]);
@@ -231,19 +237,32 @@ export default function App() {
     };
   }, []);
 
+  // Ref to track if we already loaded markets for the current exchange
+  const loadedExchangeIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     const loadMarketInfo = async () => {
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-      if (activeExchange) {
-        const { pairs, quoteAssets } = await fetchMarketInfo(activeExchange);
-        if (pairs.length > 0) {
-          setAllMarketPairs(pairs);
-          setAvailableQuotes(quoteAssets);
-          if (selectedPairs.length <= 1) setSelectedPairs(['BTCUSDT']);
-        }
+
+      // If no active exchange, or we already loaded for this specific exchange ID, skip
+      if (!activeExchange) return;
+      if (loadedExchangeIdRef.current === activeExchange.id && allMarketPairs.length > 0) return;
+
+      console.log('[MARKET] Fetching market pairs for exchange:', activeExchange.name);
+      const { pairs, quoteAssets } = await fetchMarketInfo(activeExchange);
+
+      if (pairs.length > 0) {
+        setAllMarketPairs(pairs);
+        setAvailableQuotes(quoteAssets);
+        loadedExchangeIdRef.current = activeExchange.id; // Mark as loaded
+
+        if (selectedPairs.length <= 1) setSelectedPairs(['BTCUSDT']);
       }
     };
-    if (isAuthenticated) loadMarketInfo();
+
+    if (isAuthenticated && exchanges.length > 0) {
+      loadMarketInfo();
+    }
   }, [isAuthenticated, exchanges]);
 
   useEffect(() => {
