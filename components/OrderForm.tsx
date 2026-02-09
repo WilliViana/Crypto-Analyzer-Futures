@@ -164,9 +164,10 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
         <div className="space-y-3 bg-[#0B0E14]/50 p-3 rounded-lg border border-[#2A303C]">
           {orderMode === 'STOP_LIMIT' && (
             <div>
-              <label className="text-xs text-gray-500 font-bold uppercase">Preço de Ativação (Stop)</label>
+              <label htmlFor="stopPrice" className="text-xs text-gray-500 font-bold uppercase">Preço de Ativação (Stop)</label>
               <div className="relative mt-1">
                 <input
+                  id="stopPrice"
                   type="number"
                   value={stopPrice}
                   onChange={e => setStopPrice(e.target.value)}
@@ -179,9 +180,10 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
           )}
 
           <div>
-            <label className="text-xs text-gray-500 font-bold uppercase">Preço Limite</label>
+            <label htmlFor="limitPrice" className="text-xs text-gray-500 font-bold uppercase">Preço Limite</label>
             <div className="relative mt-1">
               <input
+                id="limitPrice"
                 type="number"
                 value={limitPrice}
                 onChange={e => setLimitPrice(e.target.value)}
@@ -202,10 +204,11 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
 
       {/* Valor USD */}
       <div>
-        <label className="text-xs text-gray-500 font-bold uppercase ml-1">Valor da Ordem (USD)</label>
+        <label htmlFor="amountUSD" className="text-xs text-gray-500 font-bold uppercase ml-1">Valor da Ordem (USD)</label>
         <div className="relative mt-1">
           <span className="absolute left-3 top-2.5 text-gray-400 font-bold">$</span>
           <input
+            id="amountUSD"
             type="number"
             value={amountUSD}
             onChange={e => setAmountUSD(e.target.value)}
@@ -230,10 +233,11 @@ export default function OrderForm({ symbol, currentPrice, exchanges, realBalance
 
       {/* Alavancagem */}
       <div>
-        <label className="text-xs text-gray-500 font-bold uppercase ml-1">
+        <label htmlFor="leverageSlider" className="text-xs text-gray-500 font-bold uppercase ml-1">
           Alavancagem: <span className="text-indigo-400">{leverage}x</span>
         </label>
         <input
+          id="leverageSlider"
           type="range"
           min="1" max="100" step="1"
           value={leverage}
