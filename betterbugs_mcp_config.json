@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+        "BetterBugs": {
+            "url": "https://mcp.betterbugs.io/mcp",
+            "type": "http"
+        }
+    }
+}

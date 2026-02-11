@@ -36,7 +36,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   const [symbol, setSymbol] = useState<string>('BTC');
   const [marketData, setMarketData] = useState<MarketData>(INITIAL_MARKET_DATA);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   // Refs for state management without re-renders during high-frequency updates
   const wsRef = useRef<WebSocket | null>(null);
   const priceHistoryRef = useRef<number[]>([]);
@@ -69,13 +69,13 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       try {
         const payload = JSON.parse(event.data);
         const currentPrice = parseFloat(payload.c);
-        
+
         // Update price history for indicators
         priceHistoryRef.current.push(currentPrice);
         if (priceHistoryRef.current.length > MAX_HISTORY) {
           priceHistoryRef.current.shift();
         }
-        
+
         const history = priceHistoryRef.current;
 
         // Real-time Calculations
@@ -85,7 +85,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
 
         // Simulate data not available in simple ticker stream for UI richness
         const vwap = currentPrice * (1 + (Math.random() * 0.0002 - 0.0001));
-        
+
         setMarketData(prev => ({
           price: currentPrice,
           change24h: parseFloat(payload.P),
@@ -110,11 +110,11 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       if (!isMountedRef.current) return;
       setIsConnected(false);
       wsRef.current = null;
-      
+
       // Exponential Backoff: 1s, 2s, 4s, 8s... max 30s
       const timeout = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
       console.warn(`[MarketStream] Disconnected. Retrying in ${timeout}ms...`);
-      
+
       retryCountRef.current += 1;
       reconnectTimeoutRef.current = setTimeout(connect, timeout);
     };
@@ -152,11 +152,14 @@ export const useMarketData = (requestedSymbol?: string) => {
   }
 
   // Update global symbol if requested
-  useEffect(() => {
-    if (requestedSymbol && requestedSymbol !== context.symbol) {
-      context.setSymbol(requestedSymbol);
-    }
-  }, [requestedSymbol, context]);
+  // REMOVED: Automatic symbol update caused infinite loops when multiple components 
+  // used this hook with different symbols (e.g., Dashboard vs ChatBot).
+  // 
+  // useEffect(() => {
+  //   if (requestedSymbol && requestedSymbol !== context.symbol) {
+  //     context.setSymbol(requestedSymbol);
+  //   }
+  // }, [requestedSymbol, context]);
 
   return context.marketData;
 };
