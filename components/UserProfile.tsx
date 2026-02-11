@@ -53,22 +53,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                 // Explicit cast to avoid TS errors until types are regenerated
                 const typedProfile = profileData as { full_name?: string; phone?: string; avatar_url?: string } | null;
 
-                if (typedProfile) {
-                    setProfile({
-                        displayName: typedProfile.full_name || user.user_metadata?.display_name || '',
-                        email: user.email || '',
-                        phone: typedProfile.phone || user.phone || '',
-                        avatarUrl: typedProfile.avatar_url || user.user_metadata?.avatar_url || '',
-                    });
-                } else {
-                    // Fallback para metadados se não houver perfil
-                    setProfile({
-                        displayName: user.user_metadata?.display_name || user.email?.split('@')[0] || '',
-                        email: user.email || '',
-                        phone: user.phone || '',
-                        avatarUrl: user.user_metadata?.avatar_url || '',
-                    });
-                }
+                // 2. Definir estado com prioridade: Profile DB > User Metadata > Defaults
+                setProfile({
+                    displayName: typedProfile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '',
+                    email: user.email || '',
+                    phone: typedProfile?.phone || user.phone || '',
+                    avatarUrl: typedProfile?.avatar_url || user.user_metadata?.avatar_url || '',
+                });
             }
         } catch (error) {
             console.error('Erro ao carregar perfil:', error);

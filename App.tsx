@@ -147,25 +147,35 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
-    let dataLoaded = false; // Prevent duplicate loading
+    let abortController: AbortController | null = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     // Function to load user data from Supabase
     const loadUserDataAndSetState = async (userSession: any) => {
-      if (!mounted || !userSession || dataLoaded) return;
-      dataLoaded = true; // Mark as loading
+      if (!mounted || !userSession) return;
+
+      // Cancel previous request if exists
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
+      const signal = abortController.signal;
 
       console.log('[AUTH] Loading data for user:', userSession.user.id);
       setSession(userSession);
       setIsAuthenticated(true);
+      setLoading(true); // Ensure loading state is shown during fetch
 
       try {
         const userData = await loadAllUserData(userSession.user.id);
-        console.log('[AUTH] Loaded:', {
-          exchanges: userData.exchanges.length,
-          strategies: userData.strategies.length
-        });
+
+        if (signal.aborted) return;
 
         if (mounted) {
+          console.log('[AUTH] Loaded:', {
+            exchanges: userData.exchanges.length,
+            strategies: userData.strategies.length
+          });
+
           if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
           if (userData.strategies.length > 0) setProfiles(userData.strategies);
           if (userData.trades.length > 0) setTrades(userData.trades);
@@ -183,13 +193,27 @@ export default function App() {
 
           // Mark data as loaded - this enables auto-save for future changes
           dataLoadedRef.current = true;
+          retryCount = 0; // Reset retry count on success
           console.log('[AUTH] Data loaded, auto-save enabled');
-
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (signal.aborted) {
+          console.log('[AUTH] Load aborted');
+          return;
+        }
+
         console.error('[AUTH] Load error:', err);
-        if (mounted) setLoading(false);
+
+        // Retry logic for non-abort errors
+        if (retryCount < MAX_RETRIES && mounted) {
+          retryCount++;
+          console.log(`[AUTH] Retrying load (${retryCount}/${MAX_RETRIES})...`);
+          setTimeout(() => loadUserDataAndSetState(userSession), 1500);
+        } else if (mounted) {
+          setLoading(false);
+          notify('error', 'Erro de Conexão', 'Falha ao carregar dados. Verifique sua conexão.');
+        }
       }
     };
 
@@ -224,6 +248,7 @@ export default function App() {
           await loadUserDataAndSetState(session);
         }
       } else if (event === 'SIGNED_OUT') {
+        if (abortController) abortController.abort();
         dataLoadedRef.current = false;
         lastUserIdRef.current = null;
         setSession(null);
@@ -235,6 +260,7 @@ export default function App() {
 
     return () => {
       mounted = false;
+      if (abortController) abortController.abort();
       subscription.unsubscribe();
     };
   }, []);

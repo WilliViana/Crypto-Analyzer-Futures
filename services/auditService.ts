@@ -52,7 +52,7 @@ export const fetchAuditLogs = async (
             .range(offset, offset + limit - 1);
 
         if (error) throw error;
-        return data || [];
+        return (data as unknown as AuditLogEntry[]) || [];
     } catch (error) {
         console.error('[AUDIT] Failed to fetch logs:', error);
         return [];
@@ -79,7 +79,7 @@ export const fetchAuditLogsByAction = async (
             .limit(limit);
 
         if (error) throw error;
-        return data || [];
+        return (data as unknown as AuditLogEntry[]) || [];
     } catch (error) {
         console.error('[AUDIT] Failed to fetch logs by action:', error);
         return [];
