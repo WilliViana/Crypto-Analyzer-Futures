@@ -54,31 +54,38 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
             return;
         }
 
-        const newEx: Exchange = {
-            id: selectedExchange.id,
-            name: selectedExchange.name,
-            type: activeTab,
-            status: 'CONNECTED',
-            apiKey,
-            apiSecret,
-            isTestnet,
-            balance: 'Sincronizando...'
-        };
+        try {
+            const newEx: Exchange = {
+                id: selectedExchange.id,
+                name: selectedExchange.name,
+                type: activeTab,
+                status: 'CONNECTED',
+                apiKey,
+                apiSecret,
+                isTestnet,
+                balance: 'Sincronizando...'
+            };
 
-        setExchanges(prev => [...prev.filter(e => e.id !== selectedExchange.id), newEx]);
+            setExchanges(prev => [...prev.filter(e => e.id !== selectedExchange.id), newEx]);
 
-        // SYNC: Save to Supabase for cross-device persistence
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id) {
-            await saveExchange(session.user.id, newEx);
-            addLog(`[SYNC] Exchange salva no servidor.`, 'INFO');
+            // SYNC: Save to Supabase for cross-device persistence
+            addLog(`[SYNC] Salvando exchange...`, 'INFO');
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+                await saveExchange(session.user.id, newEx);
+                addLog(`[SYNC] Exchange salva no servidor.`, 'INFO');
+            }
+
+            addLog(`${selectedExchange.name} (${isTestnet ? 'DEMO' : 'REAL'}) conectado.`, 'SUCCESS');
+        } catch (error) {
+            console.error(error);
+            addLog(`Erro ao conectar: ${error}`, 'ERROR');
+        } finally {
+            setSelectedExchange(null);
+            setApiKey('');
+            setApiSecret('');
+            setIsTestnet(false);
         }
-
-        addLog(`${selectedExchange.name} (${isTestnet ? 'DEMO' : 'REAL'}) conectado.`, 'SUCCESS');
-        setSelectedExchange(null);
-        setApiKey('');
-        setApiSecret('');
-        setIsTestnet(false);
     };
 
     const isConnected = (id: string) => exchanges.find(e => e.id === id);

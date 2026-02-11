@@ -217,7 +217,9 @@ export default function App() {
 
       if (event === 'SIGNED_IN' && session) {
         // Only load if not already loaded or if user changed
-        if (!dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+        // FIXED: Force reload if we are not authenticated yet (e.g. refresh)
+        if (!isAuthenticated || !dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+          console.log('[AUTH] Session restored or changed. Loading data...');
           lastUserIdRef.current = session.user.id;
           await loadUserDataAndSetState(session);
         }
@@ -409,7 +411,10 @@ export default function App() {
   };
 
   if (loading) return <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
-  if (!isAuthenticated) return <LoginScreen onLogin={() => setIsAuthenticated(true)} lang={lang} setLang={setLang} />;
+
+  // FIXED: Do not manually set authenticated state here. Let the supabase subscription handle it.
+  // This prevents the UI from rendering before data is loaded.
+  if (!isAuthenticated) return <LoginScreen onLogin={() => { /* Triggered by auth state change */ }} lang={lang} setLang={setLang} />;
 
   return (
     <div className="flex h-screen bg-background text-gray-200 overflow-hidden font-sans relative">
