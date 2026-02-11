@@ -166,7 +166,7 @@ export default function App() {
       setLoading(true); // Ensure loading state is shown during fetch
 
       try {
-        const userData = await loadAllUserData(userSession.user.id);
+        const userData = await loadAllUserData(userSession.user.id, signal);
 
         if (signal.aborted) return;
 
@@ -199,13 +199,17 @@ export default function App() {
         }
       } catch (err: any) {
         if (signal.aborted) {
-          console.log('[AUTH] Load aborted');
+          console.log('[AUTH] Load aborted (cleanup)');
           return;
         }
 
-        console.error('[AUTH] Load error:', err);
+        // If it's an AbortError but OUR signal is not aborted, it means external abort (network/system)
+        // We SHOULD retry in this case
+        const isAbortError = err.name === 'AbortError';
 
-        // Retry logic for non-abort errors
+        console.error(`[AUTH] Load error (Abort: ${isAbortError}):`, err);
+
+        // Retry logic
         if (retryCount < MAX_RETRIES && mounted) {
           retryCount++;
           console.log(`[AUTH] Retrying load (${retryCount}/${MAX_RETRIES})...`);
@@ -217,35 +221,18 @@ export default function App() {
       }
     };
 
-    const initSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          if (session) {
-            await loadUserDataAndSetState(session);
-          } else {
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        console.error('[AUTH] Init error:', error);
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initSession();
-
     // Listen for auth changes (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AUTH] State change:', event, session?.user?.email);
 
       if (event === 'SIGNED_IN' && session) {
-        // Only load if not already loaded or if user changed
-        // FIXED: Force reload if we are not authenticated yet (e.g. refresh)
+        // Debounce load to prevent dual-invocation or rapid refreshes
         if (!isAuthenticated || !dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
-          console.log('[AUTH] Session restored or changed. Loading data...');
+          console.log('[AUTH] Session valid. Scheduling data load...');
           lastUserIdRef.current = session.user.id;
-          await loadUserDataAndSetState(session);
+
+          // Clear any pending timeouts if necessary, but here we just call the abortable loader
+          loadUserDataAndSetState(session);
         }
       } else if (event === 'SIGNED_OUT') {
         if (abortController) abortController.abort();
@@ -255,6 +242,19 @@ export default function App() {
         setIsAuthenticated(false);
         setExchanges([]);
         setLoading(false);
+      }
+    });
+
+    // Check session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        // Manual check only if NOT authenticated yet
+        if (!isAuthenticated) {
+          console.log('[AUTH] Initial session check found user. Loading...');
+          loadUserDataAndSetState(session);
+        }
+      } else {
+        if (mounted) setLoading(false);
       }
     });
 
