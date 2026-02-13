@@ -97,24 +97,34 @@ export default function App() {
   }, [profileIndex, assetBatchIndex]);
 
   // --- AUTH ---
+  const dataLoadedRef = React.useRef(false);
+  const isLoadingRef = React.useRef(false);
+  const lastUserIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    // TEMPORARY DEBUG - This popup MUST appear on every page load
-    if (typeof window !== 'undefined') {
-      window.alert('DEBUG: Auth useEffect STARTED');
-    }
-
     let mounted = true;
+    let abortController: AbortController | null = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
-    // Function to load user data
     const loadUserDataAndSetState = async (userSession: any) => {
       if (!mounted || !userSession) return;
+      if (isLoadingRef.current) { console.log('[AUTH] Already loading, skipping'); return; }
+      isLoadingRef.current = true;
+
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
+      const signal = abortController.signal;
 
       console.log('[AUTH] Loading data for user:', userSession.user.id);
       setSession(userSession);
       setIsAuthenticated(true);
+      setLoading(true);
 
       try {
         const userData = await loadAllUserData(userSession.user.id);
+        if (signal.aborted) { isLoadingRef.current = false; return; }
+
         console.log('[AUTH] Loaded:', { exchanges: userData.exchanges.length, strategies: userData.strategies.length });
 
         if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
@@ -122,47 +132,58 @@ export default function App() {
         if (userData.trades.length > 0) setTrades(userData.trades);
         if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
         addLog('[SYNC] Dados carregados do servidor.', 'INFO');
-      } catch (err) {
+
+        dataLoadedRef.current = true;
+        retryCount = 0;
+        isLoadingRef.current = false;
+        if (mounted) setLoading(false);
+      } catch (err: any) {
+        if (signal.aborted) { isLoadingRef.current = false; return; }
         console.error('[AUTH] Load error:', err);
+        if (retryCount < MAX_RETRIES && mounted) {
+          retryCount++;
+          isLoadingRef.current = false;
+          setTimeout(() => loadUserDataAndSetState(userSession), 1500);
+        } else if (mounted) {
+          isLoadingRef.current = false;
+          setLoading(false);
+        }
       }
     };
 
-    // Initial session check
-    const initSession = async () => {
-      console.log('[AUTH] Checking initial session...');
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      // DEBUG: This alert will DEFINITELY show
-      if (typeof window !== 'undefined') {
-        console.warn('🔍 DEBUG SESSION:', session ? session.user.email : 'NO SESSION', error);
-      }
-
-      if (session) {
-        console.log('[AUTH] Session found:', session.user.email);
-        await loadUserDataAndSetState(session);
-      } else {
-        console.log('[AUTH] No session found');
-      }
-      if (mounted) setLoading(false);
-    };
-
-    initSession();
-
-    // Listen for auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[AUTH] State change:', event, session?.user?.email);
 
       if (event === 'SIGNED_IN' && session) {
-        await loadUserDataAndSetState(session);
+        if (!dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+          lastUserIdRef.current = session.user.id;
+          await loadUserDataAndSetState(session);
+        }
       } else if (event === 'SIGNED_OUT') {
+        if (abortController) abortController.abort();
+        dataLoadedRef.current = false;
+        lastUserIdRef.current = null;
         setSession(null);
         setIsAuthenticated(false);
         setExchanges([]);
+        if (mounted) setLoading(false);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        if (!dataLoadedRef.current && !isLoadingRef.current) {
+          console.log('[AUTH] Initial session found. Loading...');
+          loadUserDataAndSetState(session);
+        }
+      } else {
+        if (mounted) setLoading(false);
       }
     });
 
     return () => {
       mounted = false;
+      if (abortController) abortController.abort();
       subscription.unsubscribe();
     };
   }, []);

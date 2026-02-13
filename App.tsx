@@ -95,6 +95,7 @@ export default function App() {
 
   // Track when initial data load completes to prevent auto-save during load
   const dataLoadedRef = React.useRef(false);
+  const isLoadingRef = React.useRef(false);
   const lastUserIdRef = React.useRef<string | null>(null);
   const lastSavedProfilesRef = React.useRef<string>('');
   const lastSavedSettingsRef = React.useRef<string>('');
@@ -154,6 +155,8 @@ export default function App() {
     // Function to load user data from Supabase
     const loadUserDataAndSetState = async (userSession: any) => {
       if (!mounted || !userSession) return;
+      if (isLoadingRef.current) { console.log('[AUTH] Already loading, skipping'); return; }
+      isLoadingRef.current = true;
 
       // Cancel previous request if exists
       if (abortController) abortController.abort();
@@ -195,6 +198,7 @@ export default function App() {
           dataLoadedRef.current = true;
           retryCount = 0; // Reset retry count on success
           console.log('[AUTH] Data loaded, auto-save enabled');
+          isLoadingRef.current = false;
           setLoading(false);
         }
       } catch (err: any) {
@@ -212,9 +216,11 @@ export default function App() {
         // Retry logic
         if (retryCount < MAX_RETRIES && mounted) {
           retryCount++;
+          isLoadingRef.current = false; // Allow retry
           console.log(`[AUTH] Retrying load (${retryCount}/${MAX_RETRIES})...`);
           setTimeout(() => loadUserDataAndSetState(userSession), 1500);
         } else if (mounted) {
+          isLoadingRef.current = false;
           setLoading(false);
           notify('error', 'Erro de Conexão', 'Falha ao carregar dados. Verifique sua conexão.');
         }
@@ -245,11 +251,10 @@ export default function App() {
       }
     });
 
-    // Check session on mount
+    // Check session on mount — use ref (not stale state) to avoid duplicate loads
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        // Manual check only if NOT authenticated yet
-        if (!isAuthenticated) {
+        if (!dataLoadedRef.current && !isLoadingRef.current) {
           console.log('[AUTH] Initial session check found user. Loading...');
           loadUserDataAndSetState(session);
         }
@@ -444,7 +449,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-background text-gray-200 overflow-hidden font-sans relative">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={() => setIsAuthenticated(false)} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={async () => { await supabase.auth.signOut(); dataLoadedRef.current = false; setIsAuthenticated(false); setSession(null); setExchanges([]); }} />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         <header className="h-16 border-b border-card-border bg-[#151A25]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center gap-4">

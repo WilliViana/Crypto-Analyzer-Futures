@@ -278,15 +278,20 @@ export interface UserData {
 }
 
 export const loadAllUserData = async (userId: string, signal?: AbortSignal): Promise<UserData> => {
-    console.log('[SYNC] Loading all data for user:', userId);
+    console.log('[SYNC] Loading all data sequentially for user:', userId);
 
     try {
-        const [exchanges, strategies, trades, settings] = await Promise.all([
-            loadExchanges(userId, signal),
-            loadStrategies(userId, signal),
-            loadTrades(userId, signal),
-            loadUserSettings(userId, signal)
-        ]);
+        // Sequential loading to prevent network overload and AbortError storms
+        const exchanges = await loadExchanges(userId, signal);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+        const strategies = await loadStrategies(userId, signal);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+        const trades = await loadTrades(userId, signal);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+        const settings = await loadUserSettings(userId, signal);
 
         console.log('[SYNC] Loaded:', {
             exchanges: exchanges.length,
