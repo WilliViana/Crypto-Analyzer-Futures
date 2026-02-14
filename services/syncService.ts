@@ -37,12 +37,10 @@ export const loadExchanges = async (userId: string, signal?: AbortSignal): Promi
         console.log('[SYNC] Mapped exchanges:', mapped);
         return mapped;
     } catch (error: any) {
-        if (error.name === 'AbortError') {
-            // Silently fail on abort
-            return [];
-        }
+        if (error.name === 'AbortError') return [];
         console.error('[SYNC] Load exchanges error:', error);
-        return [];
+        // Re-throw network errors so Promise.allSettled detects failure
+        throw error;
     }
 };
 
@@ -118,7 +116,7 @@ export const loadStrategies = async (userId: string, signal?: AbortSignal): Prom
     } catch (error: any) {
         if (error.name === 'AbortError') return [];
         console.error('[SYNC] Load strategies error:', error);
-        return [];
+        throw error;
     }
 };
 
@@ -186,7 +184,7 @@ export const loadTrades = async (userId: string, signal?: AbortSignal): Promise<
     } catch (error: any) {
         if (error.name === 'AbortError') return [];
         console.error('[SYNC] Load trades error:', error);
-        return [];
+        throw error;
     }
 };
 
@@ -237,13 +235,17 @@ export const loadUserSettings = async (userId: string, signal?: AbortSignal): Pr
             .from('user_settings')
             .select('*')
             .eq('user_id', userId)
-            .single();
+            .maybeSingle();
 
         if (signal) (query as any).abortSignal(signal);
 
         const { data, error } = await query;
 
-        if (error || !data) return null;
+        if (error) {
+            console.error('[SYNC] Load settings error:', error);
+            throw error;
+        }
+        if (!data) return null;
 
         return {
             selectedPairs: data.selected_pairs || ['BTCUSDT'],
@@ -251,7 +253,8 @@ export const loadUserSettings = async (userId: string, signal?: AbortSignal): Pr
         };
     } catch (error: any) {
         if (error.name === 'AbortError') return null;
-        return null;
+        console.error('[SYNC] Load settings error (catch):', error);
+        throw error;
     }
 };
 

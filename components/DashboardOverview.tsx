@@ -51,37 +51,45 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
     useEffect(() => {
         const fetchHistory = async () => {
-            const { supabase } = await import('../services/supabaseClient'); // Dynamic import to avoid cycles/mock issues
+            try {
+                const { supabase } = await import('../services/supabaseClient');
 
-            let query = supabase.from('balance_history').select('total_balance, created_at').order('created_at', { ascending: true });
+                let query = supabase.from('balance_history').select('balance, recorded_at').order('recorded_at', { ascending: true });
 
-            // Time Filters
-            const now = new Date();
-            if (timeRange === '1H') now.setHours(now.getHours() - 1);
-            if (timeRange === '1D') now.setDate(now.getDate() - 1);
-            if (timeRange === '1W') now.setDate(now.getDate() - 7);
-            if (timeRange === '1M') now.setMonth(now.getMonth() - 1);
+                // Time Filters
+                const now = new Date();
+                if (timeRange === '1H') now.setHours(now.getHours() - 1);
+                if (timeRange === '1D') now.setDate(now.getDate() - 1);
+                if (timeRange === '1W') now.setDate(now.getDate() - 7);
+                if (timeRange === '1M') now.setMonth(now.getMonth() - 1);
 
-            if (timeRange !== 'ALL') {
-                query = query.gte('created_at', now.toISOString());
-            }
+                if (timeRange !== 'ALL') {
+                    query = query.gte('recorded_at', now.toISOString());
+                }
 
-            const { data } = await query;
+                const { data, error } = await query;
 
-            if (data && data.length > 0) {
-                const formatted = data.map((d: any) => ({
-                    time: new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    value: parseFloat(d.total_balance),
-                    original_ts: d.created_at
-                }));
-                setHistoryData(formatted);
-            } else {
-                // Fallback to session history if no data
+                if (error) {
+                    console.warn('[DASH] balance_history query error:', error.message);
+                }
+
+                if (data && data.length > 0) {
+                    const formatted = data.map((d: any) => ({
+                        time: new Date(d.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        value: parseFloat(d.balance),
+                        original_ts: d.recorded_at
+                    }));
+                    setHistoryData(formatted);
+                } else {
+                    if (sessionHistory.length > 0) setHistoryData(sessionHistory as any);
+                }
+            } catch (err) {
+                console.warn('[DASH] fetchHistory failed:', err);
                 if (sessionHistory.length > 0) setHistoryData(sessionHistory as any);
             }
         };
         fetchHistory();
-    }, [timeRange, sessionHistory]); // Update when session history updates or filter changes
+    }, [timeRange, sessionHistory]);
 
     const displayedOrders = orderTab === 'positive' ? positiveOrders : negativeOrders;
 
@@ -97,6 +105,18 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const totalPnL = useMemo(() => trades.reduce((acc, t) => acc + t.pnl, 0), [trades]);
     const bestTrade = useMemo(() => Math.max(0, ...trades.map(t => t.pnl)), [trades]);
     const worstTrade = useMemo(() => Math.min(0, ...trades.map(t => t.pnl)), [trades]);
+
+    // Filter trades by selected period
+    const filteredTrades = useMemo(() => {
+        if (timeRange === 'ALL') return trades;
+        const now = new Date();
+        const cutoff = new Date();
+        if (timeRange === '1H') cutoff.setHours(now.getHours() - 1);
+        if (timeRange === '1D') cutoff.setDate(now.getDate() - 1);
+        if (timeRange === '1W') cutoff.setDate(now.getDate() - 7);
+        if (timeRange === '1M') cutoff.setMonth(now.getMonth() - 1);
+        return trades.filter(t => new Date(t.timestamp) >= cutoff);
+    }, [trades, timeRange]);
 
     // Get profile for an asset - improved lookup
     const getProfileForAsset = (symbol: string) => {
@@ -453,6 +473,63 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                 <XCircle size={14} />
                                 {isClosingAll ? 'Fechando todas...' : `Fechar Todas (${assets.length})`}
                             </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Trade History */}
+            <div className="bg-surface border border-card-border rounded-xl shadow-lg overflow-hidden">
+                <div className="p-4 border-b border-card-border flex justify-between items-center bg-black/20">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase">
+                        <Clock size={16} className="text-primary" /> Histórico de Trades
+                    </h3>
+                    <span className="text-[10px] text-gray-500 font-bold">{filteredTrades.length} trades ({timeRange})</span>
+                </div>
+                <div className="overflow-auto max-h-[300px] scrollbar-hide">
+                    {filteredTrades.length > 0 ? (
+                        <table className="w-full text-xs">
+                            <thead className="sticky top-0 bg-surface">
+                                <tr className="text-gray-500 uppercase text-[9px] border-b border-card-border">
+                                    <th className="text-left p-3">Par</th>
+                                    <th className="text-left p-3">Lado</th>
+                                    <th className="text-right p-3">Qtd</th>
+                                    <th className="text-right p-3">Entrada</th>
+                                    <th className="text-right p-3">PnL</th>
+                                    <th className="text-right p-3">Status</th>
+                                    <th className="text-right p-3">Data</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTrades.slice(0, 50).map((trade, i) => (
+                                    <tr key={trade.id || i} className="border-b border-card-border/30 hover:bg-white/5 transition-colors">
+                                        <td className="p-3 font-bold text-white">{trade.symbol}</td>
+                                        <td className="p-3">
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${trade.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                {trade.side}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-right font-mono text-gray-300">{trade.amount}</td>
+                                        <td className="p-3 text-right font-mono text-gray-300">${trade.entryPrice?.toFixed(2)}</td>
+                                        <td className={`p-3 text-right font-mono font-bold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                                        </td>
+                                        <td className="p-3 text-right">
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                                                {trade.status || 'OPEN'}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-right text-gray-500 text-[10px]">
+                                            {trade.timestamp ? new Date(trade.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-10 opacity-40">
+                            <Clock size={28} className="mb-2" />
+                            <span className="text-xs font-bold uppercase">Nenhum trade registrado</span>
                         </div>
                     )}
                 </div>

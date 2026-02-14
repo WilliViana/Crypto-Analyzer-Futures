@@ -6,10 +6,26 @@
   <link rel="icon" type="image/svg+xml" href="https://picsum.photos/32/32" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Analyzer v10 | AI Trading Platform</title>
+  <script>
+    // CRITICAL: Clean up ALL cookies immediately before any other JS loads.
+    // Old CookieStorage adapter created large cookies that cause 494/ERR_CONNECTION_RESET.
+    // This runs synchronously, first thing, to prevent header overflow on subsequent requests.
+    (function () {
+      try {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+          var name = cookies[i].split('=')[0].trim();
+          if (name) {
+            document.cookie = name + '=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          }
+        }
+      } catch (e) { }
+    })();
+    // Polyfill process for browser environment
+    window.process = window.process || { env: { API_KEY: '' } };
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    // Polyfill process for browser environment to prevent 'process is not defined' crashes
-    window.process = window.process || { env: { API_KEY: '' } };
 
     tailwind.config = {
       theme: {

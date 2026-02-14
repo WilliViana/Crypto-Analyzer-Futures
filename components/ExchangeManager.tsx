@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { Exchange, Language, LogEntry } from '../types';
 import { translations } from '../utils/translations';
-import { Server, ShieldCheck, Zap, Key, Lock, Save, X, Database, Globe, Copy, Check, ToggleLeft as Toggle } from 'lucide-react';
+import { Server, ShieldCheck, Zap, Key, Lock, Save, X, Database, Globe, Copy, Check, ToggleLeft as Toggle, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { saveExchange, deleteExchange } from '../services/syncService';
+import { validateApiCredentials } from '../services/exchangeService';
 
 interface ExchangeManagerProps {
     exchanges: Exchange[];
@@ -23,6 +24,8 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
     const [isTestnet, setIsTestnet] = useState(false);
     const [userIp, setUserIp] = useState<string>('Detectando...');
     const [copied, setCopied] = useState(false);
+    const [validating, setValidating] = useState(false);
+    const [validationError, setValidationError] = useState<string | null>(null);
 
     useEffect(() => {
         fetch('https://api.ipify.org?format=json')
@@ -54,22 +57,46 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
             return;
         }
 
+        setValidating(true);
+        setValidationError(null);
+
         try {
-            const newEx: Exchange = {
+            const tempExchange: Exchange = {
                 id: selectedExchange.id,
                 name: selectedExchange.name,
                 type: activeTab,
-                status: 'CONNECTED',
+                status: 'DISCONNECTED',
                 apiKey,
                 apiSecret,
                 isTestnet,
-                balance: 'Sincronizando...'
+            };
+
+            // Step 1: Validate API credentials with Binance
+            addLog(`🔍 Validando credenciais da API ${selectedExchange.name}...`, 'INFO');
+            const validation = await validateApiCredentials(tempExchange);
+
+            if (!validation.valid) {
+                setValidationError(validation.error || 'Credenciais inválidas');
+                addLog(`❌ Validação falhou: ${validation.error}`, 'ERROR');
+                setValidating(false);
+                return;
+            }
+
+            // Step 2: Credentials are valid — save
+            const balanceStr = validation.balance !== undefined
+                ? `$${validation.balance.toFixed(2)}`
+                : 'Conectado';
+            addLog(`✅ API válida! Saldo: ${balanceStr}`, 'SUCCESS');
+
+            const newEx: Exchange = {
+                ...tempExchange,
+                status: 'CONNECTED',
+                balance: balanceStr,
             };
 
             setExchanges(prev => [...prev.filter(e => e.id !== selectedExchange.id), newEx]);
 
-            // SYNC: Save to Supabase for cross-device persistence
-            addLog(`[SYNC] Salvando exchange...`, 'INFO');
+            // Step 3: Save to Supabase
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user?.id) {
                 await saveExchange(session.user.id, newEx);
@@ -80,7 +107,9 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
         } catch (error) {
             console.error(error);
             addLog(`Erro ao conectar: ${error}`, 'ERROR');
+            setValidationError(`Erro: ${error}`);
         } finally {
+            setValidating(false);
             setSelectedExchange(null);
             setApiKey('');
             setApiSecret('');
@@ -195,7 +224,23 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
                             <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
                                 <p className="text-[9px] text-blue-400 leading-tight uppercase font-bold">DICA: Para chaves de "Demo Trading", ative o modo Testnet acima para evitar o erro -2015.</p>
                             </div>
-                            <button onClick={handleConnect} className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all uppercase text-xs shadow-lg shadow-primary/20">Vincular Conta</button>
+                            {validationError && (
+                                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                                    <AlertCircle size={14} className="text-red-500 shrink-0" />
+                                    <span className="text-xs text-red-400">{validationError}</span>
+                                </div>
+                            )}
+                            <button
+                                onClick={handleConnect}
+                                disabled={validating}
+                                className={`w-full py-3 rounded-xl font-bold uppercase text-xs shadow-lg transition-all flex items-center justify-center gap-2 ${validating ? 'bg-gray-700 text-gray-400 cursor-wait' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'}`}
+                            >
+                                {validating ? (
+                                    <><Loader2 size={14} className="animate-spin" /> Validando API...</>
+                                ) : (
+                                    'Vincular Conta'
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>

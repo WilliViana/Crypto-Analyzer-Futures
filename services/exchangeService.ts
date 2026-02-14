@@ -56,6 +56,33 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
   } catch (error) { return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false }; }
 };
 
+/**
+ * Validates API credentials by making a test call to Binance.
+ * Returns { valid, balance?, error? }
+ */
+export const validateApiCredentials = async (exchange: Exchange): Promise<{ valid: boolean; balance?: number; error?: string }> => {
+  try {
+    const data = await callBinanceProxy('/fapi/v2/balance', 'GET', {}, exchange);
+    if (Array.isArray(data)) {
+      const usdt = data.find((a: any) => a.asset === 'USDT');
+      return { valid: true, balance: usdt ? parseFloat(usdt.balance) : 0 };
+    }
+    return { valid: true, balance: 0 };
+  } catch (error: any) {
+    const msg = error.message || 'Erro desconhecido';
+    if (msg.includes('-2015') || msg.includes('Invalid API-key')) {
+      return { valid: false, error: 'API Key inválida. Verifique a chave.' };
+    }
+    if (msg.includes('-1022') || msg.includes('Signature')) {
+      return { valid: false, error: 'Secret inválido. Verifique a chave privada.' };
+    }
+    if (msg.includes('Proxy não encontrada') || msg.includes('404')) {
+      return { valid: false, error: 'Proxy de API não configurada. Deploy a Edge Function.' };
+    }
+    return { valid: false, error: msg };
+  }
+};
+
 export const executeOrder = async (order: OrderRequest, exchange: Exchange | undefined, profileName: string = "Manual"): Promise<{ success: boolean; message: string; orderId?: string }> => {
   if (!exchange) return { success: false, message: "Corretora desconectada." };
 
