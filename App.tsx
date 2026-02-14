@@ -360,7 +360,7 @@ export default function App() {
           setProfileIndex(p => p + 1);
         } catch (error: any) { }
       };
-      scanIntervalRef.current = setInterval(scanMarket, 8000);
+      scanIntervalRef.current = setInterval(scanMarket, 5000);
     } else {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
     }
@@ -378,7 +378,7 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchRealData();
-      const i = setInterval(fetchRealData, 15000); // Poll every 15 seconds
+      const i = setInterval(fetchRealData, 5000); // Poll every 5 seconds
       return () => clearInterval(i);
     }
   }, [isAuthenticated, fetchRealData]);
