@@ -2,21 +2,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
 
-// Safe access to environment variables to prevent runtime crashes
-// Supports both Vite (import.meta.env) and Node.js (process.env)
-const getEnv = (key: string, fallback: string): string => {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
-        return (import.meta as any).env[key];
-    }
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-        return process.env[key] as string;
-    }
-    return fallback;
-};
+// Supabase credentials with hardcoded fallbacks to prevent 'Invalid supabaseUrl' errors
+// Vite statically replaces import.meta.env.VITE_* at build time
+const FALLBACK_URL = 'https://bhigvgfkttvjibvlyqpl.supabase.co';
+const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
 
-// Use environment variables if available, otherwise fallback to the provided keys.
-export const SUPABASE_URL = getEnv('VITE_SUPABASE_URL', 'https://bhigvgfkttvjibvlyqpl.supabase.co');
-export const SUPABASE_ANON_KEY = getEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s');
+export const SUPABASE_URL: string = (import.meta as any).env?.VITE_SUPABASE_URL || FALLBACK_URL;
+export const SUPABASE_ANON_KEY: string = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
 
 // Cookie-based storage adapter for Supabase auth
 // Uses chunked cookies to handle large JWT tokens (>4KB limit per cookie)
