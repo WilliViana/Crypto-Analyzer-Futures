@@ -268,6 +268,33 @@ export const saveUserSettings = async (userId: string, settings: { selectedPairs
     return !error;
 };
 
+// ============ LOCAL CACHE ============
+
+const CACHE_KEY = 'crypto-analyzer-data-cache';
+const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
+
+const saveToCache = (userId: string, data: UserData): void => {
+    try {
+        const cacheEntry = { userId, data, timestamp: Date.now() };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheEntry));
+        console.log('[CACHE] Data saved to local cache');
+    } catch { /* localStorage full or unavailable */ }
+};
+
+const loadFromCache = (userId: string): UserData | null => {
+    try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const entry = JSON.parse(raw);
+        if (entry.userId !== userId) return null;
+        if (Date.now() - entry.timestamp > CACHE_TTL) return null;
+        console.log('[CACHE] Loaded data from local cache');
+        return entry.data;
+    } catch {
+        return null;
+    }
+};
+
 // ============ FULL SYNC ============
 
 export interface UserData {
@@ -279,6 +306,13 @@ export interface UserData {
 
 export const loadAllUserData = async (userId: string, signal?: AbortSignal): Promise<UserData> => {
     console.log('[SYNC] Loading all data in parallel for user:', userId);
+
+    const defaultData: UserData = {
+        exchanges: [],
+        strategies: [],
+        trades: [],
+        settings: { selectedPairs: ['BTCUSDT'], isRunning: false }
+    };
 
     try {
         // Parallel loading with Promise.allSettled — fast and failure-tolerant
@@ -296,23 +330,50 @@ export const loadAllUserData = async (userId: string, signal?: AbortSignal): Pro
         const trades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
         const settings = settingsResult.status === 'fulfilled' ? settingsResult.value : null;
 
+        const hasData = exchanges.length > 0 || strategies.length > 0 || trades.length > 0;
+        const allFailed = exchangesResult.status === 'rejected' && strategiesResult.status === 'rejected';
+
         console.log('[SYNC] Loaded:', {
             exchanges: exchanges.length,
             strategies: strategies.length,
-            trades: trades.length
+            trades: trades.length,
+            allFailed
         });
 
-        return {
+        // If ALL fetches failed, try local cache
+        if (allFailed) {
+            console.warn('[SYNC] All Supabase fetches failed — loading from local cache');
+            const cached = loadFromCache(userId);
+            if (cached) return cached;
+            return defaultData;
+        }
+
+        const result: UserData = {
             exchanges,
             strategies,
             trades,
             settings: settings || { selectedPairs: ['BTCUSDT'], isRunning: false }
         };
+
+        // Cache successful data for offline/fallback use
+        if (hasData) {
+            saveToCache(userId, result);
+        }
+
+        return result;
     } catch (error: any) {
         if (error.name === 'AbortError') {
             throw error;
         }
         console.error('[SYNC] loadAllUserData error:', error);
-        throw error;
+
+        // Fallback to cache on any error
+        const cached = loadFromCache(userId);
+        if (cached) {
+            console.log('[SYNC] Using cached data after error');
+            return cached;
+        }
+
+        return defaultData;
     }
 };
