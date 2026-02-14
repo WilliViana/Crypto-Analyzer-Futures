@@ -278,20 +278,23 @@ export interface UserData {
 }
 
 export const loadAllUserData = async (userId: string, signal?: AbortSignal): Promise<UserData> => {
-    console.log('[SYNC] Loading all data sequentially for user:', userId);
+    console.log('[SYNC] Loading all data in parallel for user:', userId);
 
     try {
-        // Sequential loading to prevent network overload and AbortError storms
-        const exchanges = await loadExchanges(userId, signal);
+        // Parallel loading with Promise.allSettled — fast and failure-tolerant
+        const [exchangesResult, strategiesResult, tradesResult, settingsResult] = await Promise.allSettled([
+            loadExchanges(userId, signal),
+            loadStrategies(userId, signal),
+            loadTrades(userId, signal),
+            loadUserSettings(userId, signal)
+        ]);
+
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-        const strategies = await loadStrategies(userId, signal);
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-        const trades = await loadTrades(userId, signal);
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-        const settings = await loadUserSettings(userId, signal);
+        const exchanges = exchangesResult.status === 'fulfilled' ? exchangesResult.value : [];
+        const strategies = strategiesResult.status === 'fulfilled' ? strategiesResult.value : [];
+        const trades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
+        const settings = settingsResult.status === 'fulfilled' ? settingsResult.value : null;
 
         console.log('[SYNC] Loaded:', {
             exchanges: exchanges.length,

@@ -10,96 +10,30 @@ const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 export const SUPABASE_URL: string = (import.meta as any).env?.VITE_SUPABASE_URL || FALLBACK_URL;
 export const SUPABASE_ANON_KEY: string = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
 
-// Cookie-based storage adapter for Supabase auth
-// Uses chunked cookies to handle large JWT tokens (>4KB limit per cookie)
-// Also syncs to localStorage for reliability (cookies as primary, localStorage as backup)
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
-const CHUNK_SIZE = 3500; // Safe limit per cookie (below 4KB browser limit)
+// Clean up any leftover cookies from previous cookie-based storage
+// This prevents 494 REQUEST_HEADER_TOO_LARGE errors on Vercel
+if (typeof document !== 'undefined') {
+    try {
+        const cookiesToClear = document.cookie.split(';')
+            .map(c => c.trim().split('=')[0])
+            .filter(name => name.startsWith('crypto-analyzer'));
+        cookiesToClear.forEach(name => {
+            document.cookie = `${name}=; path=/; max-age=0`;
+        });
+        if (cookiesToClear.length > 0) console.log('[AUTH] Cleaned', cookiesToClear.length, 'leftover cookies');
+    } catch { /* ignore */ }
+}
 
-const CookieStorage = {
-    getItem(key: string): string | null {
-        if (typeof document === 'undefined') return null;
-        try {
-            // Try to read chunked cookies first
-            const countMatch = document.cookie.match(new RegExp('(^| )' + encodeURIComponent(key + '.count') + '=([^;]+)'));
-            if (countMatch) {
-                const count = parseInt(decodeURIComponent(countMatch[2]), 10);
-                let value = '';
-                for (let i = 0; i < count; i++) {
-                    const chunkMatch = document.cookie.match(new RegExp('(^| )' + encodeURIComponent(key + '.' + i) + '=([^;]+)'));
-                    if (chunkMatch) {
-                        value += decodeURIComponent(chunkMatch[2]);
-                    } else {
-                        // Chunk missing, fall back to localStorage
-                        return localStorage.getItem(key);
-                    }
-                }
-                return value || null;
-            }
-            // Fallback: try single cookie (migration from old format)
-            const singleMatch = document.cookie.match(new RegExp('(^| )' + encodeURIComponent(key) + '=([^;]+)'));
-            if (singleMatch) return decodeURIComponent(singleMatch[2]);
-            // Final fallback: localStorage
-            return localStorage.getItem(key);
-        } catch {
-            return localStorage.getItem(key);
-        }
-    },
-    setItem(key: string, value: string): void {
-        if (typeof document === 'undefined') return;
-        try {
-            const isSecure = location.protocol === 'https:';
-            const secureSuffix = isSecure ? '; Secure' : '';
-
-            // Clear old cookies first
-            this.removeItem(key);
-
-            // Split value into chunks
-            const chunks: string[] = [];
-            for (let i = 0; i < value.length; i += CHUNK_SIZE) {
-                chunks.push(value.substring(i, i + CHUNK_SIZE));
-            }
-
-            // Store chunk count
-            document.cookie = `${encodeURIComponent(key + '.count')}=${chunks.length}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax${secureSuffix}`;
-
-            // Store each chunk
-            for (let i = 0; i < chunks.length; i++) {
-                document.cookie = `${encodeURIComponent(key + '.' + i)}=${encodeURIComponent(chunks[i])}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax${secureSuffix}`;
-            }
-
-            // Also sync to localStorage as backup
-            localStorage.setItem(key, value);
-        } catch {
-            // If cookies fail, at least save to localStorage
-            localStorage.setItem(key, value);
-        }
-    },
-    removeItem(key: string): void {
-        if (typeof document === 'undefined') return;
-        try {
-            // Remove chunk count
-            document.cookie = `${encodeURIComponent(key + '.count')}=; path=/; max-age=0`;
-            // Remove up to 10 possible chunks
-            for (let i = 0; i < 10; i++) {
-                document.cookie = `${encodeURIComponent(key + '.' + i)}=; path=/; max-age=0`;
-            }
-            // Remove single-value cookie (old format)
-            document.cookie = `${encodeURIComponent(key)}=; path=/; max-age=0`;
-            // Also remove from localStorage
-            localStorage.removeItem(key);
-        } catch { /* ignore */ }
-    },
-};
-
-// Typed Supabase client with cookie-based auth persistence
+// Supabase client — uses localStorage (default) for session persistence
+// DO NOT use cookies for auth in SPAs — cookies are sent with every HTTP request
+// and large JWTs will cause 494 REQUEST_HEADER_TOO_LARGE errors on Vercel
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storageKey: 'crypto-analyzer-auth',
-        storage: CookieStorage,            // Use cookies + localStorage sync
+        // storage: localStorage (default — correct for SPAs)
     }
 });
 
