@@ -1,5 +1,6 @@
 import { OrderRequest, Exchange, Trade, RealAccountData } from '../types';
 import { SUPABASE_URL, supabase } from './supabaseClient';
+import { addAuditLog, AUDIT_ACTIONS } from './auditService';
 
 function fixPrecision(value: number, precision: number): string {
   if (!value || isNaN(value)) return "0";
@@ -18,8 +19,11 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
 
   if (!response.ok) {
     const txt = await response.text();
-    console.error("[PROXY FAIL]", txt);
-    throw new Error(`Proxy: ${txt}`);
+    console.error("[PROXY FAIL]", proxyUrl, response.status, txt);
+    if (response.status === 404) {
+      throw new Error(`Função Proxy não encontrada em: ${proxyUrl}. Verifique o deploy.`);
+    }
+    throw new Error(`Proxy (${response.status}): ${txt}`);
   }
 
   const data = await response.json();
@@ -50,6 +54,33 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
     }));
     return { totalBalance: parseFloat(data.totalMarginBalance), unrealizedPnL: parseFloat(data.totalUnrealizedProfit), assets, isSimulated: exchange.isTestnet };
   } catch (error) { return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false }; }
+};
+
+/**
+ * Validates API credentials by making a test call to Binance.
+ * Returns { valid, balance?, error? }
+ */
+export const validateApiCredentials = async (exchange: Exchange): Promise<{ valid: boolean; balance?: number; error?: string }> => {
+  try {
+    const data = await callBinanceProxy('/fapi/v2/balance', 'GET', {}, exchange);
+    if (Array.isArray(data)) {
+      const usdt = data.find((a: any) => a.asset === 'USDT');
+      return { valid: true, balance: usdt ? parseFloat(usdt.balance) : 0 };
+    }
+    return { valid: true, balance: 0 };
+  } catch (error: any) {
+    const msg = error.message || 'Erro desconhecido';
+    if (msg.includes('-2015') || msg.includes('Invalid API-key')) {
+      return { valid: false, error: 'API Key inválida. Verifique a chave.' };
+    }
+    if (msg.includes('-1022') || msg.includes('Signature')) {
+      return { valid: false, error: 'Secret inválido. Verifique a chave privada.' };
+    }
+    if (msg.includes('Proxy não encontrada') || msg.includes('404')) {
+      return { valid: false, error: 'Proxy de API não configurada. Deploy a Edge Function.' };
+    }
+    return { valid: false, error: msg };
+  }
 };
 
 export const executeOrder = async (order: OrderRequest, exchange: Exchange | undefined, profileName: string = "Manual"): Promise<{ success: boolean; message: string; orderId?: string }> => {
@@ -112,13 +143,81 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
     }
 
     if (res.orderId && (order.stopLossPrice || order.takeProfitPrice)) {
-      // SL/TP logic here
+      const tpSlOrders: any[] = [];
+      const closeSide = order.side === 'BUY' ? 'SELL' : 'BUY';
+
+      // Common params for TP/SL
+      const commonParams = {
+        symbol: order.symbol,
+        side: closeSide,
+        quantity: fixPrecision(finalQty, qtyPrecision),
+        reduceOnly: 'true',
+        workingType: 'MARK_PRICE'
+      };
+
+      if (order.stopLossPrice) {
+        tpSlOrders.push({
+          ...commonParams,
+          type: 'STOP_MARKET',
+          stopPrice: fixPrecision(order.stopLossPrice, 2), // TODO: Fetch price precision
+          timeInForce: 'GTC'
+        });
+      }
+
+      if (order.takeProfitPrice) {
+        tpSlOrders.push({
+          ...commonParams,
+          type: 'TAKE_PROFIT_MARKET',
+          stopPrice: fixPrecision(order.takeProfitPrice, 2),
+          timeInForce: 'GTC'
+        });
+      }
+
+      if (positionSide !== 'BOTH') {
+        tpSlOrders.forEach(o => o.positionSide = positionSide);
+      } else {
+        tpSlOrders.forEach(o => o.reduceOnly = 'true');
+      }
+
+      // Execute TP/SL orders sequentially to avoid batch limit/errors complexity for now
+      for (const o of tpSlOrders) {
+        try {
+          await callBinanceProxy('/fapi/v1/order', 'POST', o, exchange);
+          console.log(`[TP/SL] Placed ${o.type} at ${o.stopPrice}`);
+        } catch (err: any) {
+          console.error(`[TP/SL ERROR] Failed to place ${o.type}:`, err);
+          await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
+            symbol: order.symbol,
+            action: `PLACE_${o.type}`,
+            error: err.message
+          });
+        }
+      }
     }
+
+    // Audit log for successful order
+    await addAuditLog(AUDIT_ACTIONS.ORDER_PLACED, 'SUCCESS', {
+      symbol: order.symbol,
+      side: order.side,
+      quantity: finalQty,
+      leverage: order.leverage,
+      orderId: res.orderId,
+      profileName
+    });
 
     return { success: true, message: `Ordem Executada! ID: ${res.orderId}`, orderId: res.orderId };
 
   } catch (e: any) {
     console.error("[EXECUTE ERROR]", e);
+
+    // Audit log for failed order
+    await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'ERROR', {
+      symbol: order.symbol,
+      side: order.side,
+      error: e.message,
+      profileName
+    });
+
     return { success: false, message: e.message || "Erro na execução" };
   }
 };
@@ -152,11 +251,14 @@ export const closePosition = async (
       side,
       type: 'MARKET',
       quantity: fixPrecision(quantity, qtyPrecision),
-      reduceOnly: 'true',
     };
 
+    // In Hedge mode use positionSide, in One-way mode use reduceOnly
+    // Cannot use both at the same time
     if (positionSide !== 'BOTH') {
       params.positionSide = positionSide;
+    } else {
+      params.reduceOnly = 'true';
     }
 
     let res;
@@ -171,9 +273,25 @@ export const closePosition = async (
       }
     }
 
+    // Audit log for closed position
+    await addAuditLog(AUDIT_ACTIONS.ORDER_CLOSED, 'SUCCESS', {
+      symbol,
+      side,
+      quantity,
+      orderId: res.orderId
+    });
+
     return { success: true, message: `Posição fechada! ID: ${res.orderId}` };
   } catch (e: any) {
     console.error("[CLOSE POSITION ERROR]", e);
+
+    await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'ERROR', {
+      symbol,
+      side,
+      action: 'CLOSE_POSITION',
+      error: e.message
+    });
+
     return { success: false, message: e.message || "Erro ao fechar posição" };
   }
 };

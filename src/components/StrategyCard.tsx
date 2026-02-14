@@ -2,16 +2,18 @@
 import React from 'react';
 import { StrategyProfile, Language, Trade } from '../types';
 import { translations } from '../utils/translations';
-import { Shield, Scale, Rocket, Target, Zap, ArrowDown, Pencil, Plus, Info, HelpCircle } from 'lucide-react';
+import { Shield, Scale, Rocket, Target, Zap, ArrowDown, Pencil, Plus, Info, HelpCircle, Trash2 } from 'lucide-react';
 
 interface StrategyCardProps {
   profile: StrategyProfile;
   lang: Language;
   onEdit: (profile: StrategyProfile) => void;
   onToggle: (id: string) => void;
+  onDelete?: (id: string) => void;
   isAddButton?: boolean;
   onAdd?: () => void;
   trades?: Trade[];
+  isTopPerformer?: boolean;
 }
 
 const colorMap: Record<string, string> = {
@@ -33,7 +35,7 @@ const metricDescriptions: Record<string, string> = {
   confidence: "Nível mínimo de confiança do sinal para abrir uma ordem.",
 };
 
-const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, isAddButton, onAdd, trades = [] }) => {
+const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [], isTopPerformer = false }) => {
   const t = translations[lang].strategy_card;
 
   // Calculate real win rate from trades
@@ -84,17 +86,37 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
     </div>
   );
 
+  // Fire animation styles for top performer
+  const fireStyles = isTopPerformer && profile.active ? `
+    ring-2 ring-orange-500/50 
+    before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-t before:from-orange-500/20 before:via-transparent before:to-transparent before:animate-pulse
+    after:absolute after:-top-24 after:left-1/2 after:-translate-x-1/2 after:w-32 after:h-32 after:bg-orange-500/30 after:rounded-full after:blur-3xl after:animate-pulse
+  ` : '';
+
   return (
     <div
-      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden ${!profile.active ? 'opacity-40 grayscale' : ''
-        }`}
+      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden ${!profile.active ? 'opacity-40 grayscale' : ''} ${fireStyles}`}
     >
-
-      {/* Inactive overlay */}
-      {!profile.active && (
-        <div className="absolute inset-0 bg-black/30 z-10 flex items-center justify-center">
-          <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded-full text-xs font-bold uppercase">Inativo</span>
+      {/* 🔥 Top Performer Badge */}
+      {isTopPerformer && profile.active && (
+        <div className="absolute -top-1 -right-1 z-20">
+          <div className="relative">
+            <span className="text-2xl animate-bounce">🔥</span>
+            <div className="absolute inset-0 animate-ping text-2xl opacity-50">🔥</div>
+          </div>
         </div>
+      )}
+
+      {/* Inactive overlay - clickable to reactivate */}
+      {!profile.active && (
+        <button
+          onClick={() => onToggle(profile.id)}
+          className="absolute inset-0 bg-black/30 z-10 flex items-center justify-center cursor-pointer hover:bg-black/20 transition-colors"
+        >
+          <span className="bg-gray-800 hover:bg-green-600 text-gray-400 hover:text-white px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors">
+            Clique para Ativar
+          </span>
+        </button>
       )}
 
       {/* Background Glow */}
@@ -113,12 +135,12 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
       {/* Logic Pipeline */}
       <div className="flex flex-col items-center gap-2 py-4 bg-black/20 rounded-xl mb-4 border border-white/5 min-h-[100px]">
         <div className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mb-1">Workflow IA</div>
-        {profile.workflowSteps.slice(0, 3).map((step, idx) => (
+        {(profile.workflowSteps || []).slice(0, 3).map((step, idx) => (
           <React.Fragment key={idx}>
             <div className="text-[10px] font-mono font-bold bg-surface border border-card-border px-3 py-1.5 rounded-lg text-gray-300 w-[90%] text-center truncate">
               {step}
             </div>
-            {idx < Math.min(profile.workflowSteps.length, 3) - 1 && (
+            {idx < Math.min((profile.workflowSteps || []).length, 3) - 1 && (
               <ArrowDown size={10} className="text-gray-700" />
             )}
           </React.Fragment>
@@ -188,6 +210,16 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
         >
           <Pencil size={12} /> Config
         </button>
+
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(profile.id); }}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all text-[10px] font-bold"
+            title="Excluir perfil"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { StrategyType, StrategyProfile, LogEntry, MarketData, Language, Exchange, Trade, RealAccountData, AdvancedIndicators } from './types';
+import { StrategyType, StrategyProfile, LogEntry, MarketData, Language, Exchange, Trade, RealAccountData, AdvancedIndicators, OrderRequest } from './types';
 import Sidebar from './components/Sidebar';
 import StrategyCard from './components/StrategyCard';
 import AuditLog from './components/AuditLog';
@@ -8,23 +9,26 @@ import ExchangeManager from './components/ExchangeManager';
 import LoginScreen from './components/LoginScreen';
 import AdminPanel from './components/AdminPanel';
 import TradeHistory from './components/TradeHistory';
+import OrderForm from './components/OrderForm';
 import Backtest from './components/Backtest';
 import DashboardOverview from './components/DashboardOverview';
 import StrategyModal from './components/StrategyModal';
 import SymbolSelector from './components/SymbolSelector';
+import ChatBot from './components/ChatBot';
 import AnalysisView from './components/AnalysisView';
+import UserProfile from './components/UserProfile';
+import InformationTab from './components/InformationTab';
 
 import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { supabase } from './services/supabaseClient';
-import { loadAllUserData, saveStrategy, saveExchange, saveTrade, saveUserSettings } from './services/syncService';
+import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
 import { Play, Square, Settings, Loader2 } from 'lucide-react';
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 15;
 
-// ... (MANTENHA OS CONSTS DEFAULT_INDICATORS E INITIAL_PROFILES_BASE IGUAIS) ...
 const DEFAULT_INDICATORS: AdvancedIndicators = {
   rsi: { enabled: true, period: 14, thresholdLow: 30, thresholdHigh: 70, weight: 20 },
   macd: { enabled: true, weight: 15 },
@@ -42,7 +46,6 @@ const INITIAL_PROFILES_BASE: StrategyProfile[] = [
   { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
   { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
   { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: 'NEW_STRAT', name: 'Nova Estrategia', description: 'Customizada', icon: 'sparkles', color: 'cyan', riskLevel: 'Custom', confidenceThreshold: 60, leverage: 10, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 3, takeProfit: 6, maxDrawdown: 10, workflowSteps: ['Custom'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
 ];
 
 export default function App() {
@@ -83,23 +86,65 @@ export default function App() {
     setLogs(prev => [...prev.slice(-99), newLog]);
   }, []);
 
-  // --- PERSISTÊNCIA ---
   useEffect(() => {
-    const saved = localStorage.getItem('botState');
-    if (saved) {
-      try { const p = JSON.parse(saved); setProfileIndex(p.pIndex || 0); setAssetBatchIndex(p.aIndex || 0); }
-      catch (e) { }
+    const savedProfiles = localStorage.getItem('cap_profiles');
+    if (savedProfiles) {
+      try { setProfiles(JSON.parse(savedProfiles)); } catch (e) { }
     }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('botState', JSON.stringify({ pIndex: profileIndex, aIndex: assetBatchIndex }));
-  }, [profileIndex, assetBatchIndex]);
-
-  // --- AUTH ---
+  // Track when initial data load completes to prevent auto-save during load
   const dataLoadedRef = React.useRef(false);
   const isLoadingRef = React.useRef(false);
   const lastUserIdRef = React.useRef<string | null>(null);
+  const lastSavedProfilesRef = React.useRef<string>('');
+  const lastSavedSettingsRef = React.useRef<string>('');
+
+  // Auto-save profiles to localStorage and Supabase
+  useEffect(() => {
+    // Always save to localStorage
+    localStorage.setItem('cap_profiles', JSON.stringify(profiles));
+
+    // Skip saving to Supabase during initial load
+    if (!dataLoadedRef.current || !session?.user?.id || profiles.length === 0) {
+      return;
+    }
+
+    // Only save if profiles actually changed (prevent loop)
+    const profilesJson = JSON.stringify(profiles.map(p => ({ id: p.id, active: p.active, name: p.name })));
+    if (profilesJson === lastSavedProfilesRef.current) {
+      return;
+    }
+    lastSavedProfilesRef.current = profilesJson;
+
+    console.log('[SYNC] Saving profiles to Supabase...');
+    profiles.forEach(profile => {
+      saveStrategy(session.user.id, profile).catch(err =>
+        console.error('[SYNC] Save profile error:', err)
+      );
+    });
+  }, [profiles]);
+
+  // Auto-save user settings (selectedPairs + isRunning) to Supabase
+  useEffect(() => {
+    if (!dataLoadedRef.current || !session?.user?.id) {
+      return;
+    }
+
+    // Create settings object to check for changes
+    const currentSettings = { selectedPairs, isRunning };
+    const settingsJson = JSON.stringify(currentSettings);
+
+    if (settingsJson === lastSavedSettingsRef.current) {
+      return;
+    }
+    lastSavedSettingsRef.current = settingsJson;
+
+    console.log('[SYNC] Saving settings to Supabase...', currentSettings);
+    saveUserSettings(session.user.id, currentSettings).catch(err =>
+      console.error('[SYNC] Save settings error:', err)
+    );
+  }, [selectedPairs, isRunning]);
 
   useEffect(() => {
     let mounted = true;
@@ -107,11 +152,13 @@ export default function App() {
     let retryCount = 0;
     const MAX_RETRIES = 3;
 
+    // Function to load user data from Supabase
     const loadUserDataAndSetState = async (userSession: any) => {
       if (!mounted || !userSession) return;
       if (isLoadingRef.current) { console.log('[AUTH] Already loading, skipping'); return; }
       isLoadingRef.current = true;
 
+      // Cancel previous request if exists
       if (abortController) abortController.abort();
       abortController = new AbortController();
       const signal = abortController.signal;
@@ -119,45 +166,79 @@ export default function App() {
       console.log('[AUTH] Loading data for user:', userSession.user.id);
       setSession(userSession);
       setIsAuthenticated(true);
-      setLoading(true);
+      setLoading(true); // Ensure loading state is shown during fetch
 
       try {
-        const userData = await loadAllUserData(userSession.user.id);
-        if (signal.aborted) { isLoadingRef.current = false; return; }
+        const userData = await loadAllUserData(userSession.user.id, signal);
 
-        console.log('[AUTH] Loaded:', { exchanges: userData.exchanges.length, strategies: userData.strategies.length });
+        if (signal.aborted) return;
 
-        if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
-        if (userData.strategies.length > 0) setProfiles(userData.strategies);
-        if (userData.trades.length > 0) setTrades(userData.trades);
-        if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
-        addLog('[SYNC] Dados carregados do servidor.', 'INFO');
+        if (mounted) {
+          console.log('[AUTH] Loaded:', {
+            exchanges: userData.exchanges.length,
+            strategies: userData.strategies.length
+          });
 
-        dataLoadedRef.current = true;
-        retryCount = 0;
-        isLoadingRef.current = false;
-        if (mounted) setLoading(false);
+          if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
+          if (userData.strategies.length > 0) setProfiles(userData.strategies);
+          if (userData.trades.length > 0) setTrades(userData.trades);
+          if (userData.settings) {
+            if (userData.settings.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
+            if (userData.settings.isRunning !== undefined) setIsRunning(userData.settings.isRunning);
+          }
+
+          // Initialize lastSaved refs to prevent immediate re-save after load
+          lastSavedProfilesRef.current = JSON.stringify(userData.strategies.map((p: any) => ({ id: p.id, active: p.active, name: p.name })));
+          lastSavedSettingsRef.current = JSON.stringify({
+            selectedPairs: userData.settings?.selectedPairs || ['BTCUSDT'],
+            isRunning: userData.settings?.isRunning || false
+          });
+
+          // Mark data as loaded - this enables auto-save for future changes
+          dataLoadedRef.current = true;
+          retryCount = 0; // Reset retry count on success
+          console.log('[AUTH] Data loaded, auto-save enabled');
+          isLoadingRef.current = false;
+          setLoading(false);
+        }
       } catch (err: any) {
-        if (signal.aborted) { isLoadingRef.current = false; return; }
-        console.error('[AUTH] Load error:', err);
+        if (signal.aborted) {
+          console.log('[AUTH] Load aborted (cleanup)');
+          return;
+        }
+
+        // If it's an AbortError but OUR signal is not aborted, it means external abort (network/system)
+        // We SHOULD retry in this case
+        const isAbortError = err.name === 'AbortError';
+
+        console.error(`[AUTH] Load error (Abort: ${isAbortError}):`, err);
+
+        // Retry logic
         if (retryCount < MAX_RETRIES && mounted) {
           retryCount++;
-          isLoadingRef.current = false;
+          isLoadingRef.current = false; // Allow retry
+          console.log(`[AUTH] Retrying load (${retryCount}/${MAX_RETRIES})...`);
           setTimeout(() => loadUserDataAndSetState(userSession), 1500);
         } else if (mounted) {
           isLoadingRef.current = false;
           setLoading(false);
+          notify('error', 'Erro de Conexão', 'Falha ao carregar dados. Verifique sua conexão.');
         }
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Listen for auth changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AUTH] State change:', event, session?.user?.email);
 
       if (event === 'SIGNED_IN' && session) {
-        if (!dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+        // Debounce load to prevent dual-invocation or rapid refreshes
+        if (!isAuthenticated || !dataLoadedRef.current || session.user.id !== lastUserIdRef.current) {
+          console.log('[AUTH] Session valid. Scheduling data load...');
           lastUserIdRef.current = session.user.id;
-          await loadUserDataAndSetState(session);
+
+          // Clear any pending timeouts if necessary, but here we just call the abortable loader
+          loadUserDataAndSetState(session);
         }
       } else if (event === 'SIGNED_OUT') {
         if (abortController) abortController.abort();
@@ -166,14 +247,15 @@ export default function App() {
         setSession(null);
         setIsAuthenticated(false);
         setExchanges([]);
-        if (mounted) setLoading(false);
+        setLoading(false);
       }
     });
 
+    // Check session on mount — use ref (not stale state) to avoid duplicate loads
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         if (!dataLoadedRef.current && !isLoadingRef.current) {
-          console.log('[AUTH] Initial session found. Loading...');
+          console.log('[AUTH] Initial session check found user. Loading...');
           loadUserDataAndSetState(session);
         }
       } else {
@@ -188,163 +270,97 @@ export default function App() {
     };
   }, []);
 
-  // --- LOAD MARKET ---
+  // Ref to track if we already loaded markets for the current exchange
+  const loadedExchangeIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     const loadMarketInfo = async () => {
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-      if (activeExchange) {
-        const { pairs, quoteAssets } = await fetchMarketInfo(activeExchange);
-        if (pairs.length > 0) {
-          setAllMarketPairs(pairs);
-          setAvailableQuotes(quoteAssets);
-          if (selectedPairs.length <= 1) setSelectedPairs(['BTCUSDT']);
-          addLog(`Mercado carregado: ${pairs.length} ativos.`, 'INFO');
-        }
+
+      // If no active exchange, or we already loaded for this specific exchange ID, skip
+      if (!activeExchange) return;
+      if (loadedExchangeIdRef.current === activeExchange.id && allMarketPairs.length > 0) return;
+
+      console.log('[MARKET] Fetching market pairs for exchange:', activeExchange.name);
+      const { pairs, quoteAssets } = await fetchMarketInfo(activeExchange);
+
+      if (pairs.length > 0) {
+        setAllMarketPairs(pairs);
+        setAvailableQuotes(quoteAssets);
+        loadedExchangeIdRef.current = activeExchange.id; // Mark as loaded
+
+        if (selectedPairs.length <= 1) setSelectedPairs(['BTCUSDT']);
       }
     };
-    if (isAuthenticated) loadMarketInfo();
+
+    if (isAuthenticated && exchanges.length > 0) {
+      loadMarketInfo();
+    }
   }, [isAuthenticated, exchanges]);
 
-  // --- SCANNER AUTOMÁTICO (CORRIGIDO) ---
   useEffect(() => {
     if (isRunning) {
       const scanMarket = async () => {
         try {
-          if (selectedPairs.length === 0 || !exchanges.some(e => e.status === 'CONNECTED')) {
-            addLog("AVISO: Sistema pausado. Sem pares ou corretora.", "WARN");
-            setIsRunning(false); return;
-          }
           const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+          if (!activeExchange || selectedPairs.length === 0) {
+            setIsRunning(false);
+            return;
+          }
 
-          // 1. Controle de Ciclos (Perfil -> Lote)
           if (profileIndex >= profiles.length) {
             const nextBatch = assetBatchIndex + BATCH_SIZE;
             if (nextBatch >= selectedPairs.length) {
-              setAssetBatchIndex(0); // Reinicia
-              addLog("CICLO COMPLETO: Reiniciando varredura.", "SYSTEM");
+              setAssetBatchIndex(0);
+              addLog("CICLO: Varredura concluída.", "SYSTEM");
             } else {
               setAssetBatchIndex(nextBatch);
             }
             setProfileIndex(0);
-            return; // Aguarda próximo tick
+            return;
           }
 
           const currentProfile = profiles[profileIndex];
-          // Sempre incrementa o index no final, mesmo se inativo, para não travar
-
-          if (!currentProfile.active) {
-            setProfileIndex(p => p + 1);
-            return;
-          }
+          if (!currentProfile.active) { setProfileIndex(p => p + 1); return; }
 
           const currentBatch = selectedPairs.slice(assetBatchIndex, assetBatchIndex + BATCH_SIZE);
-          if (currentBatch.length === 0) {
-            setProfileIndex(p => p + 1);
-            return;
+
+          if (currentBatch.length > 0) {
+            addLog(`CICLO: Analisando ${currentBatch.length} ativos com perfil ${currentProfile.name}...`, 'INFO');
           }
-
-          // --- LOG DE AUDITORIA EXPLÍCITO ---
-          const profileEmoji = currentProfile.riskLevel === 'Low' ? '🛡️' :
-            currentProfile.riskLevel === 'Med' ? '⚖️' :
-              currentProfile.riskLevel === 'High' ? '🚀' :
-                currentProfile.riskLevel === 'Expert' ? '🎯' :
-                  currentProfile.riskLevel === 'Extreme' ? '⚡' : '📊';
-
-          const batchStart = assetBatchIndex;
-          const batchEnd = assetBatchIndex + currentBatch.length;
-          const totalAssets = selectedPairs.length;
-
-          addLog(`${profileEmoji} ${currentProfile.name.toUpperCase()} - Analisando ${batchStart} a ${batchEnd} de ${totalAssets} ativos (Limiar: ${currentProfile.confidenceThreshold}%)`, 'SYSTEM');
-
-          // 2. Análise Técnica
-          let opportunities = 0;
-          let analyzed = 0;
 
           for (const symbol of currentBatch) {
             const candles = await fetchHistoricalCandles(symbol, '15m');
-            if (!candles || candles.length < 50) {
-              addLog(`⚠️ ${symbol}: Dados insuficientes - Ignorado`, 'WARN');
-              continue;
-            }
+            if (!candles || candles.length < 50) continue;
 
-            analyzed++;
             const analysis = unifiedTechnicalAnalysis(candles, currentProfile);
-            const currentPrice = candles[candles.length - 1].close;
 
-            // Log detalhado mostrando estado claro
-            const confidenceStr = analysis.confidence.toFixed(0);
-            const thresholdStr = currentProfile.confidenceThreshold.toString();
-            const isOpportunity = analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold;
+            if (analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold) {
+              const side = analysis.signal;
+              const reasons = analysis.details.join(', ');
+              addLog(`GATILHO: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
 
-            if (isOpportunity) {
-              opportunities++;
-              const side = analysis.signal.includes('BUY') || analysis.signal === 'LONG' ? 'BUY' : 'SELL';
-              const sideEmoji = side === 'BUY' ? '🟢 LONG' : '🔴 SHORT';
+              const price = candles[candles.length - 1].close;
+              const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
+              const tp = side === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100);
 
-              addLog(`✅ IDENTIFICADO - ${symbol} ${sideEmoji} | Confiança: ${confidenceStr}% | Preço: $${currentPrice.toFixed(2)}`, 'SUCCESS');
-              addLog(`   📋 Razões: ${analysis.reasons.join(', ')}`, 'INFO');
-
-              if (activeExchange) {
-                const price = currentPrice;
-                const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
-                const tp = side === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100);
-                const positionValue = 10; // Default $10 position
-
-                addLog(`🚀 ABRINDO ORDEM: ${symbol} @ $${price.toFixed(2)} | Valor: $${positionValue} | Alav: ${currentProfile.leverage}x`, 'SYSTEM');
-                addLog(`   📍 SL: $${sl.toFixed(2)} | TP: $${tp.toFixed(2)}`, 'INFO');
-
-                executeOrder({
-                  symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
-                  stopLossPrice: sl, takeProfitPrice: tp
-                }, activeExchange, currentProfile.name).then(async (res) => {
-                  if (res.success) {
-                    addLog(`✅ ORDEM EXECUTADA: ${symbol} ${side} | ID: ${res.orderId} | Entry: $${price.toFixed(2)}`, 'SUCCESS');
-                    notify('success', 'Ordem Automática', `${side} ${symbol} @ $${price.toFixed(2)}`);
-
-                    // SYNC: Save trade to Supabase for cross-device persistence
-                    if (session?.user?.id) {
-                      const newTrade: Trade = {
-                        id: res.orderId || `trade_${Date.now()}`,
-                        strategyId: currentProfile.id,
-                        symbol,
-                        side: (side === 'BUY' ? 'LONG' : 'SHORT') as 'LONG' | 'SHORT',
-                        entryPrice: price,
-                        amount: positionValue / price,
-                        pnl: 0,
-                        status: 'OPEN',
-                        timestamp: new Date().toISOString(),
-                        strategyName: currentProfile.name
-                      };
-                      await saveTrade(session.user.id, newTrade);
-                      addLog(`[SYNC] Trade salvo no servidor.`, 'INFO');
-                    }
-
-                    fetchRealData();
-                  } else {
-                    addLog(`❌ ORDEM FALHOU: ${symbol} | Erro: ${res.message}`, 'ERROR');
-                  }
-                });
-              }
-            } else {
-              // Log resumido para ativos sem oportunidade
-              const signalIcon = analysis.signal === 'LONG' ? '↗️' : analysis.signal === 'SHORT' ? '↘️' : '➖';
-              addLog(`${signalIcon} ${symbol}: ${analysis.signal || 'NEUTRAL'} (${confidenceStr}%/${thresholdStr}%) - Não atingiu limiar`, 'INFO');
+              executeOrder({
+                symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
+                stopLossPrice: sl, takeProfitPrice: tp
+              }, activeExchange, currentProfile.name).then(res => {
+                if (res.success) {
+                  addLog(`AUTO: Ordem executada em ${symbol}.`, 'SUCCESS');
+                  fetchRealData();
+                }
+              });
+            } else if (analysis.confidence > 20) {
+              addLog(`MONITORANDO: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - ${analysis.details.join(', ')}`, 'INFO');
             }
-          }
-
-          // Resumo do lote
-          if (opportunities === 0) {
-            addLog(`📊 ${currentProfile.name}: ${analyzed} ativos analisados - Nenhuma oportunidade identificada`, 'INFO');
-          } else {
-            addLog(`🎯 ${currentProfile.name}: ${opportunities} oportunidade(s) em ${analyzed} ativos analisados`, 'SUCCESS');
           }
           setProfileIndex(p => p + 1);
-        } catch (error: any) {
-          console.error("Scanner:", error);
-          addLog(`Erro no Scanner: ${error.message}`, 'ERROR');
-        }
+        } catch (error: any) { }
       };
-      scanIntervalRef.current = setInterval(scanMarket, 6000);
+      scanIntervalRef.current = setInterval(scanMarket, 5000);
     } else {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
     }
@@ -360,94 +376,114 @@ export default function App() {
   }, [exchanges]);
 
   useEffect(() => {
-    if (isAuthenticated) { fetchRealData(); const i = setInterval(fetchRealData, 10000); return () => clearInterval(i); }
+    if (isAuthenticated) {
+      fetchRealData();
+      const i = setInterval(fetchRealData, 5000); // Poll every 5 seconds
+      return () => clearInterval(i);
+    }
   }, [isAuthenticated, fetchRealData]);
-
-  const handleTestOrder = async () => {
-    const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-    if (!activeExchange) { notify('error', 'Erro', 'Conecte a Binance.'); return; }
-    if (!confirm("Teste BTCUSDT agora?")) return;
-
-    const res = await executeOrder({ symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0, leverage: 10 }, activeExchange, 'Manual');
-    if (res.success) { notify('success', 'Sucesso', 'Ordem enviada'); addLog(`TESTE OK: ${res.orderId}`, 'SUCCESS'); }
-    else { notify('error', 'Erro', res.message); addLog(`TESTE FALHA: ${res.message}`, 'ERROR'); }
-  };
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} profiles={profiles} exchanges={exchanges} />;
-      case 'settings': return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
-      case 'strategies': return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">{profiles.map(p => <StrategyCard key={p.id} profile={p} lang={lang} onEdit={setEditingProfile} onToggle={async (id) => { const newProfiles = profiles.map(x => x.id === id ? { ...x, active: !x.active } : x); setProfiles(newProfiles); const updated = newProfiles.find(x => x.id === id); if (session?.user?.id && updated) await saveStrategy(session.user.id, updated); }} onDelete={(id) => { if (confirm('Excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }} trades={trades} />)}</div>;
+      case 'dashboard':
+        return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} profiles={profiles} exchanges={exchanges} onRefresh={fetchRealData} />;
+      case 'settings':
+        return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
+      case 'strategies':
+        // Calculate which profile is top performer based on actual PNL from trades
+        const profilePnL = profiles.map(p => {
+          const profileTrades = trades.filter(t =>
+            t.strategyName?.toLowerCase().includes(p.name.toLowerCase()) || t.strategyName === p.id
+          );
+          const totalPnL = profileTrades.filter(t => t.status === 'CLOSED').reduce((sum, t) => sum + (t.pnl || 0), 0);
+          return { id: p.id, pnl: totalPnL };
+        });
+        const topPerformerId = profilePnL.length > 0 ? profilePnL.reduce((a, b) => a.pnl > b.pnl ? a : b).id : null;
+        const hasPositivePnL = profilePnL.some(p => p.pnl > 0);
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
+            {profiles.map(p => (
+              <StrategyCard
+                key={p.id}
+                profile={p}
+                lang={lang}
+                onEdit={setEditingProfile}
+                onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))}
+                onDelete={(id) => { if (window.confirm('Deseja realmente excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }}
+                trades={trades}
+                isTopPerformer={hasPositivePnL && p.id === topPerformerId}
+              />
+            ))}
+            <StrategyCard
+              isAddButton={true}
+              onAdd={() => {
+                const newId = `custom_${Date.now()}`;
+                setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false });
+              }}
+              lang={lang}
+              profile={profiles[0]}
+              onEdit={() => { }}
+              onToggle={() => { }}
+            />
+          </div>
+        );
+      case 'analysis':
+        return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
       case 'logs': return <AuditLog logs={logs} />;
-      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} trades={trades} exchanges={exchanges} />;
+      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} />;
       case 'backtest': return <Backtest profiles={profiles} lang={lang} />;
-      case 'analysis':
-        // PASSAGEM DE DADOS CORRETA
-        return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
-      case 'admin': return userRole === 'admin' ? <AdminPanel lang={lang} /> : <div className="text-white">Acesso Negado</div>;
-      default: return <div className="text-white p-10">Em breve...</div>;
+      case 'admin': return <AdminPanel lang={lang} />;
+      case 'profile': return <UserProfile lang={lang} />;
+      case 'info': return <InformationTab lang={lang} />;
+      default: return <div className="text-white p-10">Interface {activeTab} em carregamento...</div>;
     }
-  };
-
-  const toggleRun = () => setIsRunning(!isRunning);
-
-  const handleLogin = async () => {
-    // Get real session from Supabase after login
-    const { data: { session: realSession } } = await supabase.auth.getSession();
-    if (realSession) {
-      setSession(realSession);
-      setIsAuthenticated(true);
-      // Load all user data from Supabase
-      const userData = await loadAllUserData(realSession.user.id);
-      if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
-      if (userData.strategies.length > 0) setProfiles(userData.strategies);
-      if (userData.trades.length > 0) setTrades(userData.trades);
-      if (userData.settings.selectedPairs.length > 0) setSelectedPairs(userData.settings.selectedPairs);
-      addLog('[SYNC] Dados carregados do servidor.', 'INFO');
-    } else {
-      // Fallback for demo mode (no persistence)
-      setIsAuthenticated(true);
-      addLog('[AVISO] Modo Demo - dados não serão salvos.', 'WARN');
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setIsAuthenticated(false);
-    setSession(null);
   };
 
   if (loading) return <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
-  if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
+
+  // FIXED: Do not manually set authenticated state here. Let the supabase subscription handle it.
+  // This prevents the UI from rendering before data is loaded.
+  if (!isAuthenticated) return <LoginScreen onLogin={() => { /* Triggered by auth state change */ }} lang={lang} setLang={setLang} />;
 
   return (
     <div className="flex h-screen bg-background text-gray-200 overflow-hidden font-sans relative">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={handleLogout} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={async () => { await supabase.auth.signOut(); dataLoadedRef.current = false; setIsAuthenticated(false); setSession(null); setExchanges([]); }} />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         <header className="h-16 border-b border-card-border bg-[#151A25]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-white hidden md:block uppercase tracking-tighter">Gemini Trader</h1>
+            <h1 className="text-xl font-bold text-white hidden md:block uppercase tracking-tighter">CAP.PRO Terminal</h1>
             <button onClick={() => setShowPairSelector(true)} className="p-2 bg-[#2A303C] hover:bg-[#353C4B] text-gray-300 rounded-lg flex items-center gap-2">
               <Settings size={18} />
-              <span className="hidden md:inline text-xs font-bold">ATIVOS ({selectedPairs.length})</span>
+              <span className="hidden md:inline text-xs font-bold uppercase">ATIVOS ({selectedPairs.length})</span>
             </button>
-            <button onClick={handleTestOrder} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-bold animate-pulse">TESTE ORDEM</button>
           </div>
           <div className="flex items-center gap-3">
-            <div className="text-xs text-gray-400 font-mono hidden md:block">Status: {isRunning ? `ON [${profiles[profileIndex]?.name}]` : 'OFF'}</div>
-            <button onClick={toggleRun} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-lg ${isRunning ? 'bg-red-500/10 text-red-500 border border-red-500/50' : 'bg-green-500 text-white hover:bg-green-400'}`}>
-              {isRunning ? <Square size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+            <div className="text-xs text-gray-500 font-mono hidden md:block">
+              Motor: {isRunning ? 'EXECUTANDO' : 'PAUSADO'}
+            </div>
+            <button onClick={() => setIsRunning(!isRunning)} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${isRunning ? 'bg-red-500/10 text-red-500 border border-red-500/50' : 'bg-green-500 text-white'}`}>
+              {isRunning ? <Square size={14} /> : <Play size={14} />}
               <span>{isRunning ? 'PARAR' : 'INICIAR'}</span>
             </button>
           </div>
         </header>
+
         <div className="flex-1 flex flex-col overflow-y-auto p-4 lg:p-6 scrollbar-hide">
           {renderContent()}
         </div>
       </main>
-      {editingProfile && <StrategyModal profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={(newP) => { setProfiles(prev => prev.map(p => p.id === newP.id ? newP : p)); setEditingProfile(null); }} />}
-      {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`Ativos: ${newSelection.length}`, 'INFO'); }} />}
+      {editingProfile && <StrategyModal profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={(newP) => {
+        setProfiles(prev => {
+          const exists = prev.some(p => p.id === newP.id);
+          if (exists) return prev.map(p => p.id === newP.id ? newP : p);
+          return [...prev, newP];
+        });
+        setEditingProfile(null);
+      }} />}
+      {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`SISTEMA: Lista de ativos atualizada.`, 'INFO'); }} />}
+      <ChatBot lang={lang} marketData={{ price: 0, change24h: 0, rsi: 50, macd: 0, bollingerState: 'Middle', volume: 0, vwap: 0, atr: 0, stochasticK: 50, stochasticD: 50, macdSignal: 0, macdHist: 0 }} symbol="BTC" />
     </div>
   );
 }

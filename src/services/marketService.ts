@@ -1,8 +1,7 @@
-import { Exchange, CoinData } from '../types';
+// src/services/marketService.ts
+import { CoinData } from '../types';
 
-// Cache simples para evitar spam na API
-const candleCache: Record<string, { data: any[], timestamp: number }> = {};
-
+// Add exported interface for CandleData to resolve MarketChart.tsx error
 export interface CandleData {
   time: number;
   open: number;
@@ -11,6 +10,9 @@ export interface CandleData {
   close: number;
   volume: number;
 }
+
+// Cache para evitar spam na API (armazena dados por 5 segundos)
+const candleCache: Record<string, { data: CandleData[], timestamp: number }> = {};
 
 export const fetchAssetPrice = async (symbol: string): Promise<number> => {
   try {
@@ -27,20 +29,32 @@ export const fetchHistoricalCandles = async (symbol: string, interval: string = 
   const cacheKey = `${symbol}-${interval}`;
   const now = Date.now();
 
-  // Se tiver cache com menos de 10 segundos, usa o cache
-  if (candleCache[cacheKey] && (now - candleCache[cacheKey].timestamp < 10000)) {
+  // Se tiver cache válido (menos de 5 segundos), usa o cache
+  if (candleCache[cacheKey] && (now - candleCache[cacheKey].timestamp < 5000)) {
       return candleCache[cacheKey].data;
   }
 
   try {
-    // Usa API Pública da Binance (não precisa de chave para dados históricos básicos)
+    // Usa API Pública da Binance (Spot) para dados de candles
     const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
     
-    if (!response.ok) throw new Error('Falha na API Binance');
+    if (!response.ok) {
+        // Tenta fallback para API de Futures se o par não existir no Spot
+        const responseFut = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+        if (!responseFut.ok) throw new Error('Falha na API Binance');
+        const rawDataFut = await responseFut.json();
+        return processCandles(rawDataFut, cacheKey, now);
+    }
     
     const rawData = await response.json();
-    
-    // Formata para objeto legível
+    return processCandles(rawData, cacheKey, now);
+
+  } catch (error) {
+    return [];
+  }
+};
+
+function processCandles(rawData: any[], cacheKey: string, now: number): CandleData[] {
     const candles: CandleData[] = rawData.map((c: any) => ({
       time: c[0],
       open: parseFloat(c[1]),
@@ -50,23 +64,18 @@ export const fetchHistoricalCandles = async (symbol: string, interval: string = 
       volume: parseFloat(c[5])
     }));
 
-    // Salva no cache
+    // Atualiza cache
     candleCache[cacheKey] = { data: candles, timestamp: now };
-    
     return candles;
-  } catch (error) {
-    console.error(`Erro ao buscar candles para ${symbol}:`, error);
-    return [];
-  }
-};
+}
 
+// Add exported function fetchTopMovers to resolve BubbleMap.tsx error
 export const fetchTopMovers = async (): Promise<CoinData[]> => {
     try {
         const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
         
-        // Filter for USDT pairs and sort by absolute percent change to find movers
         const movers = data
             .filter((ticker: any) => ticker.symbol.endsWith('USDT'))
             .map((ticker: any) => ({
@@ -86,6 +95,7 @@ export const fetchTopMovers = async (): Promise<CoinData[]> => {
     }
 };
 
+// Add exported function fetchOrderBook to resolve AdvancedAnalytics.tsx error
 export const fetchOrderBook = async (symbol: string) => {
     try {
         const pair = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
@@ -102,11 +112,3 @@ export const fetchOrderBook = async (symbol: string) => {
         return { bids: [], asks: [] };
     }
 };
-
-export const fetchAssetHealth = async (symbol: string) => {
-    // Placeholder for health data since we don't have on-chain API key
-    return [];
-};
-
-export const initializeMarketSymbols = async () => {};
-export const getRandomTokenFromSector = () => 'BTC';
