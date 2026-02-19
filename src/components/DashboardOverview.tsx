@@ -54,7 +54,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             try {
                 const { supabase } = await import('../services/supabaseClient');
 
+                // Get current user for explicit filtering (defense in depth)
+                const { data: { session } } = await supabase.auth.getSession();
+                const userId = session?.user?.id;
+
                 let query = supabase.from('balance_history').select('balance, recorded_at').order('recorded_at', { ascending: true });
+
+                // Filter by user_id explicitly (don't rely only on RLS)
+                if (userId) {
+                    query = query.eq('user_id', userId);
+                }
 
                 // Time Filters
                 const now = new Date();

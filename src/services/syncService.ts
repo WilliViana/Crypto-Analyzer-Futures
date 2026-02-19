@@ -259,16 +259,48 @@ export const loadUserSettings = async (userId: string, signal?: AbortSignal): Pr
 };
 
 export const saveUserSettings = async (userId: string, settings: { selectedPairs: string[], isRunning: boolean }): Promise<boolean> => {
-    const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-            user_id: userId,
-            selected_pairs: settings.selectedPairs,
-            is_running: settings.isRunning,
-            updated_at: new Date().toISOString()
-        } as any, { onConflict: 'user_id' });
+    try {
+        // Check if settings already exist for this user
+        const { data: existing } = await supabase
+            .from('user_settings')
+            .select('id')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-    return !error;
+        if (existing) {
+            // Update existing record
+            const { error } = await supabase
+                .from('user_settings')
+                .update({
+                    selected_pairs: settings.selectedPairs,
+                    is_running: settings.isRunning,
+                    updated_at: new Date().toISOString()
+                } as any)
+                .eq('user_id', userId);
+            if (error) {
+                console.error('[SYNC] Update settings error:', error);
+                return false;
+            }
+        } else {
+            // Insert new record
+            const { error } = await supabase
+                .from('user_settings')
+                .insert({
+                    user_id: userId,
+                    selected_pairs: settings.selectedPairs,
+                    is_running: settings.isRunning,
+                    updated_at: new Date().toISOString()
+                } as any);
+            if (error) {
+                console.error('[SYNC] Insert settings error:', error);
+                return false;
+            }
+        }
+        return true;
+    } catch (err) {
+        console.error('[SYNC] saveUserSettings exception:', err);
+        return false;
+    }
 };
 
 // ============ LOCAL CACHE ============

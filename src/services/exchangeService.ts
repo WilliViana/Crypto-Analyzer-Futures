@@ -15,7 +15,17 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
   const baseUrl = SUPABASE_URL.replace(/\/$/, '');
   const proxyUrl = `${baseUrl}/functions/v1/binance-proxy`;
   const payload = { endpoint, method, params, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret, isTestnet: exchange.isTestnet } };
-  const response = await fetch(proxyUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+  // Get current session token for authenticated Edge Function calls
+  const { data: { session } } = await supabase.auth.getSession();
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (session?.access_token) {
+    authHeaders['Authorization'] = `Bearer ${session.access_token}`;
+  }
+
+  const response = await fetch(proxyUrl, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
 
   if (!response.ok) {
     const txt = await response.text();
@@ -146,21 +156,35 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       const tpSlOrders: any[] = [];
       const closeSide = order.side === 'BUY' ? 'SELL' : 'BUY';
 
-      // Common params for TP/SL
-      const commonParams = {
+      // Get price precision for the symbol (fallback to 2)
+      let pricePrecision = 2;
+      try {
+        const info = await fetchMarketInfo(exchange);
+        const symbolInfo = (info.pairs as any[]).find(p => p.symbol === order.symbol);
+        if (symbolInfo) pricePrecision = symbolInfo.pricePrecision;
+      } catch (e) { /* use default */ }
+
+      // Common params for TP/SL (no timeInForce — not valid for STOP_MARKET/TAKE_PROFIT_MARKET)
+      const commonParams: any = {
         symbol: order.symbol,
         side: closeSide,
         quantity: fixPrecision(finalQty, qtyPrecision),
-        reduceOnly: 'true',
         workingType: 'MARK_PRICE'
       };
+
+      // Hedge Mode: use positionSide, NO reduceOnly
+      // One-way Mode: use reduceOnly, NO positionSide
+      if (positionSide !== 'BOTH') {
+        commonParams.positionSide = positionSide;
+      } else {
+        commonParams.reduceOnly = 'true';
+      }
 
       if (order.stopLossPrice) {
         tpSlOrders.push({
           ...commonParams,
           type: 'STOP_MARKET',
-          stopPrice: fixPrecision(order.stopLossPrice, 2), // TODO: Fetch price precision
-          timeInForce: 'GTC'
+          stopPrice: fixPrecision(order.stopLossPrice, pricePrecision),
         });
       }
 
@@ -168,22 +192,15 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
         tpSlOrders.push({
           ...commonParams,
           type: 'TAKE_PROFIT_MARKET',
-          stopPrice: fixPrecision(order.takeProfitPrice, 2),
-          timeInForce: 'GTC'
+          stopPrice: fixPrecision(order.takeProfitPrice, pricePrecision),
         });
       }
 
-      if (positionSide !== 'BOTH') {
-        tpSlOrders.forEach(o => o.positionSide = positionSide);
-      } else {
-        tpSlOrders.forEach(o => o.reduceOnly = 'true');
-      }
-
-      // Execute TP/SL orders sequentially to avoid batch limit/errors complexity for now
+      // Execute TP/SL orders sequentially
       for (const o of tpSlOrders) {
         try {
           await callBinanceProxy('/fapi/v1/order', 'POST', o, exchange);
-          console.log(`[TP/SL] Placed ${o.type} at ${o.stopPrice}`);
+          console.log(`[TP/SL] ✅ Placed ${o.type} at ${o.stopPrice}`);
         } catch (err: any) {
           console.error(`[TP/SL ERROR] Failed to place ${o.type}:`, err);
           await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
