@@ -20,28 +20,52 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
   const { data: { session } } = await supabase.auth.getSession();
   const authHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
   };
   if (session?.access_token) {
     authHeaders['Authorization'] = `Bearer ${session.access_token}`;
   }
 
-  const response = await fetch(proxyUrl, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
+  // Retry logic to handle HTTP/2 stale connections (ERR_CONNECTION_CLOSED)
+  const MAX_RETRIES = 2;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+        keepalive: true,
+      });
 
-  if (!response.ok) {
-    const txt = await response.text();
-    console.error("[PROXY FAIL]", proxyUrl, response.status, txt);
-    if (response.status === 404) {
-      throw new Error(`Função Proxy não encontrada em: ${proxyUrl}. Verifique o deploy.`);
+      if (!response.ok) {
+        const txt = await response.text();
+        console.error("[PROXY FAIL]", proxyUrl, response.status, txt);
+        if (response.status === 404) {
+          throw new Error(`Função Proxy não encontrada em: ${proxyUrl}. Verifique o deploy.`);
+        }
+        throw new Error(`Proxy (${response.status}): ${txt}`);
+      }
+
+      const data = await response.json();
+      if (data.code && data.code !== 200) {
+        console.error("[BINANCE FAIL]", data);
+        throw new Error(`Binance: ${data.msg}`);
+      }
+      return data;
+    } catch (err: any) {
+      lastError = err;
+      // Only retry on network errors (Failed to fetch, connection closed)
+      if (err.name === 'TypeError' && err.message.includes('Failed to fetch') && attempt < MAX_RETRIES) {
+        console.warn(`[PROXY] Attempt ${attempt + 1} failed (network), retrying in 1s...`);
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
     }
-    throw new Error(`Proxy (${response.status}): ${txt}`);
   }
-
-  const data = await response.json();
-  if (data.code && data.code !== 200) {
-    console.error("[BINANCE FAIL]", data);
-    throw new Error(`Binance: ${data.msg}`);
-  }
-  return data;
+  throw lastError || new Error('Proxy request failed after retries');
 }
 
 export const fetchMarketInfo = async (exchange: Exchange) => {
