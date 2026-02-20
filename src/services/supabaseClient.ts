@@ -24,15 +24,6 @@ if (typeof document !== 'undefined') {
     } catch { /* ignore */ }
 }
 
-// Custom fetch wrapper — use cache: 'no-store' to avoid stale HTTP/2 connections
-// DO NOT add Cache-Control header — Supabase CORS rejects it
-const customFetch: typeof fetch = (input, init) => {
-    return fetch(input, {
-        ...init,
-        cache: 'no-store',
-    });
-};
-
 // Supabase client — uses localStorage (default) for session persistence
 // DO NOT use cookies for auth in SPAs — cookies are sent with every HTTP request
 // and large JWTs will cause 494 REQUEST_HEADER_TOO_LARGE errors on Vercel
@@ -42,9 +33,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storageKey: 'crypto-analyzer-auth',
-    },
-    global: {
-        fetch: customFetch,
     },
 });
 

@@ -35,7 +35,6 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload),
-        cache: 'no-store',
       });
 
       if (!response.ok) {
