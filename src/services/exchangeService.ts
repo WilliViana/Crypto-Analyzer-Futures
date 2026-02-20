@@ -20,7 +20,7 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
   const { data: { session } } = await supabase.auth.getSession();
   const authHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
+    // DO NOT add Cache-Control header — Supabase CORS rejects it
   };
   if (session?.access_token) {
     authHeaders['Authorization'] = `Bearer ${session.access_token}`;
@@ -36,7 +36,6 @@ async function callBinanceProxy(endpoint: string, method: string, params: any, e
         headers: authHeaders,
         body: JSON.stringify(payload),
         cache: 'no-store',
-        keepalive: true,
       });
 
       if (!response.ok) {

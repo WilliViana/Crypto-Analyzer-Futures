@@ -24,16 +24,12 @@ if (typeof document !== 'undefined') {
     } catch { /* ignore */ }
 }
 
-// Custom fetch wrapper to prevent HTTP/2 connection reuse issues
-// Browser keeps stale HTTP/2 connections that Supabase gateway closes → ERR_CONNECTION_CLOSED
+// Custom fetch wrapper — use cache: 'no-store' to avoid stale HTTP/2 connections
+// DO NOT add Cache-Control header — Supabase CORS rejects it
 const customFetch: typeof fetch = (input, init) => {
-    const headers = new Headers(init?.headers);
-    headers.set('Cache-Control', 'no-cache');
     return fetch(input, {
         ...init,
-        headers,
         cache: 'no-store',
-        keepalive: true,
     });
 };
 
