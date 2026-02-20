@@ -340,7 +340,7 @@ export interface UserData {
 }
 
 export const loadAllUserData = async (userId: string, signal?: AbortSignal): Promise<UserData> => {
-    console.log('[SYNC] Loading all data in parallel for user:', userId);
+    console.log('[SYNC] Loading all data sequentially for user:', userId);
 
     const defaultData: UserData = {
         exchanges: [],
@@ -349,24 +349,34 @@ export const loadAllUserData = async (userId: string, signal?: AbortSignal): Pro
         settings: { selectedPairs: ['BTCUSDT'], isRunning: false }
     };
 
+    // Helper: retry a function up to N times with backoff
+    const withRetry = async <T>(fn: () => Promise<T>, label: string, retries = 2): Promise<T | null> => {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+                const result = await fn();
+                return result;
+            } catch (err: any) {
+                if (err.name === 'AbortError') throw err;
+                console.warn(`[SYNC] ${label} attempt ${attempt + 1} failed:`, err.message);
+                if (attempt < retries) {
+                    await new Promise(r => setTimeout(r, 500 * (attempt + 1))); // 500ms, 1000ms backoff
+                }
+            }
+        }
+        return null;
+    };
+
     try {
-        // Parallel loading with Promise.allSettled — fast and failure-tolerant
-        const [exchangesResult, strategiesResult, tradesResult, settingsResult] = await Promise.allSettled([
-            loadExchanges(userId, signal),
-            loadStrategies(userId, signal),
-            loadTrades(userId, signal),
-            loadUserSettings(userId, signal)
-        ]);
+        // SEQUENTIAL loading to avoid HTTP/2 connection limits on Supabase free tier
+        const exchanges = await withRetry(() => loadExchanges(userId, signal), 'exchanges') || [];
+        const strategies = await withRetry(() => loadStrategies(userId, signal), 'strategies') || [];
+        const trades = await withRetry(() => loadTrades(userId, signal), 'trades') || [];
+        const settings = await withRetry(() => loadUserSettings(userId, signal), 'settings');
 
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-        const exchanges = exchangesResult.status === 'fulfilled' ? exchangesResult.value : [];
-        const strategies = strategiesResult.status === 'fulfilled' ? strategiesResult.value : [];
-        const trades = tradesResult.status === 'fulfilled' ? tradesResult.value : [];
-        const settings = settingsResult.status === 'fulfilled' ? settingsResult.value : null;
-
-        const hasData = exchanges.length > 0 || strategies.length > 0 || trades.length > 0;
-        const allFailed = exchangesResult.status === 'rejected' && strategiesResult.status === 'rejected';
+        const allFailed = exchanges.length === 0 && strategies.length === 0 && trades.length === 0 && !settings;
 
         console.log('[SYNC] Loaded:', {
             exchanges: exchanges.length,
@@ -375,7 +385,7 @@ export const loadAllUserData = async (userId: string, signal?: AbortSignal): Pro
             allFailed
         });
 
-        // If ALL fetches failed, try local cache
+        // If ALL fetches returned nothing, try local cache
         if (allFailed) {
             console.warn('[SYNC] All Supabase fetches failed — loading from local cache');
             const cached = loadFromCache(userId);
@@ -391,9 +401,7 @@ export const loadAllUserData = async (userId: string, signal?: AbortSignal): Pro
         };
 
         // Cache successful data for offline/fallback use
-        if (hasData) {
-            saveToCache(userId, result);
-        }
+        saveToCache(userId, result);
 
         return result;
     } catch (error: any) {
