@@ -4,10 +4,16 @@ import type { Database } from '../types/supabase';
 
 // Supabase credentials with hardcoded fallbacks to prevent 'Invalid supabaseUrl' errors
 // Vite statically replaces import.meta.env.VITE_* at build time
-const FALLBACK_URL = 'https://bhigvgfkttvjibvlyqpl.supabase.co';
+const DIRECT_SUPABASE_URL = 'https://bhigvgfkttvjibvlyqpl.supabase.co';
 const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
 
-export const SUPABASE_URL: string = (import.meta as any).env?.VITE_SUPABASE_URL || FALLBACK_URL;
+// In PRODUCTION (Vercel): use /sb proxy to avoid direct browser→Supabase connections
+// This eliminates CORS, HTTP/2, and ERR_CONNECTION_CLOSED issues
+// In DEVELOPMENT: use direct Supabase URL
+const isDev = (import.meta as any).env?.DEV || typeof window === 'undefined';
+const PROXY_URL = typeof window !== 'undefined' ? `${window.location.origin}/sb` : DIRECT_SUPABASE_URL;
+
+export const SUPABASE_URL: string = (import.meta as any).env?.VITE_SUPABASE_URL || (isDev ? DIRECT_SUPABASE_URL : PROXY_URL);
 export const SUPABASE_ANON_KEY: string = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
 
 // Clean up any leftover cookies from previous cookie-based storage
