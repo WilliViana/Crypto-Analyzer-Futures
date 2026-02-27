@@ -1,51 +1,45 @@
 /**
  * Vercel Serverless Proxy for Supabase
  * 
- * Why: User's ISP/network blocks Supabase REST API calls after CORS preflight.
- * The browser sends OPTIONS (200 OK) but the actual GET/POST never arrives at Supabase.
- * This proxy makes requests server-side from Vercel's infrastructure, bypassing the block.
+ * ALL browser requests come as POST with body:
+ * { targetUrl, targetMethod, targetHeaders, targetBody }
  * 
- * Route: /api/supabase?path=rest/v1/exchanges&select=*&user_id=eq.xxx
- * vercel.json rewrites /api/supabase/:path* → /api/supabase?path=:path*
+ * The proxy reconstructs the original request and forwards to Supabase.
+ * This bypasses ISP/WAF that blocks GET requests with SQL-like query params.
  */
 
-const SUPABASE_URL = 'https://bhigvgfkttvjibvlyqpl.supabase.co';
-
 export default async function handler(req: any, res: any) {
-    // CORS headers for all responses
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'apikey, authorization, content-type, prefer, accept, x-client-info, accept-profile, content-profile');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
-    // Build target URL from path query param + other query params
-    const subPath = req.query.path || '';
-    const targetUrl = new URL(`${SUPABASE_URL}/${subPath}`);
-
-    // Forward all query params except our internal 'path'
-    for (const [key, value] of Object.entries(req.query)) {
-        if (key !== 'path') {
-            targetUrl.searchParams.set(key, Array.isArray(value) ? (value as string[])[0] : value as string);
-        }
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Only POST allowed' });
     }
 
-    // Forward auth-related headers
-    const headers: Record<string, string> = {};
-    const FORWARD = ['apikey', 'authorization', 'content-type', 'prefer', 'accept', 'accept-profile', 'content-profile', 'x-client-info'];
-    for (const h of FORWARD) {
-        if (req.headers[h]) headers[h] = req.headers[h];
+    const { targetUrl, targetMethod, targetHeaders, targetBody } = req.body || {};
+
+    if (!targetUrl) {
+        return res.status(400).json({ error: 'Missing targetUrl in body' });
     }
 
     try {
-        const opts: RequestInit = { method: req.method, headers };
-        if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-            opts.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+        const opts: RequestInit = {
+            method: targetMethod || 'GET',
+            headers: targetHeaders || {},
+        };
+
+        // Forward body for non-GET methods
+        if (targetMethod && targetMethod !== 'GET' && targetMethod !== 'HEAD' && targetBody) {
+            opts.body = typeof targetBody === 'string' ? targetBody : JSON.stringify(targetBody);
         }
 
-        const response = await fetch(targetUrl.toString(), opts);
+        const response = await fetch(targetUrl, opts);
 
         // Forward important response headers
         for (const h of ['content-type', 'content-range', 'x-total-count']) {
@@ -56,7 +50,7 @@ export default async function handler(req: any, res: any) {
         const body = await response.text();
         return res.status(response.status).send(body);
     } catch (err: any) {
-        console.error('[PROXY]', err.message, targetUrl.toString());
+        console.error('[PROXY]', err.message, targetUrl);
         return res.status(502).json({ error: err.message });
     }
 }
