@@ -12,26 +12,35 @@ function fixPrecision(value: number, precision: number): string {
 
 async function callBinanceProxy(endpoint: string, method: string, params: any, exchange: Exchange) {
   if (!exchange.apiKey || !exchange.apiSecret) throw new Error("Credenciais ausentes.");
-  const baseUrl = SUPABASE_URL.replace(/\/$/, '');
-  const proxyUrl = `${baseUrl}/functions/v1/binance-proxy`;
+  const edgeFunctionUrl = `https://bhigvgfkttvjibvlyqpl.supabase.co/functions/v1/binance-proxy`;
   const payload = { endpoint, method, params, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret, isTestnet: exchange.isTestnet } };
 
   const { data: { session } } = await supabase.auth.getSession();
-  const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  const targetHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
   if (session?.access_token) {
-    authHeaders['Authorization'] = `Bearer ${session.access_token}`;
+    targetHeaders['Authorization'] = `Bearer ${session.access_token}`;
   }
 
-  const response = await fetch(proxyUrl, {
-    method: 'POST',
-    headers: authHeaders,
-    body: JSON.stringify(payload),
-  });
+  // In production: use Vercel proxy to bypass ISP/WAF block
+  const isDev = (import.meta as any).env?.DEV === true;
+  const proxyUrl = isDev ? edgeFunctionUrl : `${window.location.origin}/api/supabase`;
+
+  const response = isDev
+    ? await fetch(edgeFunctionUrl, { method: 'POST', headers: targetHeaders, body: JSON.stringify(payload) })
+    : await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetUrl: edgeFunctionUrl,
+        targetMethod: 'POST',
+        targetHeaders,
+        targetBody: JSON.stringify(payload),
+      }),
+    });
 
   if (!response.ok) {
     const txt = await response.text();
     console.error("[PROXY FAIL]", response.status, txt);
-    if (response.status === 404) throw new Error(`Proxy não encontrado: ${proxyUrl}`);
     throw new Error(`Proxy (${response.status}): ${txt}`);
   }
 
