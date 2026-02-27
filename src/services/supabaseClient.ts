@@ -4,16 +4,17 @@ import type { Database } from '../types/supabase';
 
 // Supabase credentials
 const DIRECT_SUPABASE_URL = 'https://bhigvgfkttvjibvlyqpl.supabase.co';
-const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
+// MUST use JWT anon key (not sb_publishable_* format) — the REST API requires JWT in apikey header
+const SUPABASE_JWT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaWd2Z2ZrdHR2amlidmx5cXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNDg4NTgsImV4cCI6MjA4MzkyNDg1OH0.t6QoUfSlZcF18Zi6l_ZHivLa8GzZcgITxd0cgnAwn8s';
 
 // PRODUCTION (Vercel): ALWAYS use /sb proxy to bypass ERR_CONNECTION_CLOSED
-// DO NOT use VITE_SUPABASE_URL env var — it overrides the proxy and causes direct connections
 // DEVELOPMENT: use direct Supabase URL
 const isDev = (import.meta as any).env?.DEV === true;
 export const SUPABASE_URL: string = isDev
     ? DIRECT_SUPABASE_URL
     : (typeof window !== 'undefined' ? `${window.location.origin}/sb` : DIRECT_SUPABASE_URL);
-export const SUPABASE_ANON_KEY: string = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
+// DO NOT use VITE_SUPABASE_ANON_KEY env var — it has publishable key format which doesn't work with REST API
+export const SUPABASE_ANON_KEY: string = SUPABASE_JWT_KEY;
 
 // Clean up any leftover cookies from previous cookie-based storage
 // This prevents 494 REQUEST_HEADER_TOO_LARGE errors on Vercel
