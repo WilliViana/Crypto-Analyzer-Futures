@@ -104,16 +104,21 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
             }
 
             addLog(`${selectedExchange.name} (${isTestnet ? 'DEMO' : 'REAL'}) conectado.`, 'SUCCESS');
-        } catch (error) {
-            console.error(error);
-            addLog(`Erro ao conectar: ${error}`, 'ERROR');
-            setValidationError(`Erro: ${error}`);
-        } finally {
-            setValidating(false);
+
+            // Only close modal and clear fields on SUCCESS
             setSelectedExchange(null);
             setApiKey('');
             setApiSecret('');
             setIsTestnet(false);
+        } catch (error: any) {
+            console.error(error);
+            const errorMsg = error?.message || String(error);
+            addLog(`Erro ao conectar: ${errorMsg}`, 'ERROR');
+            setValidationError(errorMsg.includes('Failed to fetch')
+                ? 'Erro de conexão com o servidor. Verifique sua internet e tente novamente.'
+                : `Erro: ${errorMsg}`);
+        } finally {
+            setValidating(false);
         }
     };
 
