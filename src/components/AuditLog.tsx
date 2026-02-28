@@ -87,18 +87,36 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
   // Merge and format logs
   const combinedLogs = showSupabase
     ? supabaseLogs.map(log => {
-      const { profile, value, pair, extra } = parseDetails(log.details);
-      return {
-        id: log.id,
-        timestamp: new Date(log.created_at).toLocaleString('pt-BR'),
-        level: log.level,
-        action: log.action,
-        profile,
-        value,
-        pair,
-        message: extra || JSON.stringify(log.details),
-        isSupabase: true
-      };
+      try {
+        const { profile, value, pair, extra } = parseDetails(log.details);
+        let msg = extra || '';
+        if (!msg && log.details) {
+          try { msg = typeof log.details === 'string' ? log.details : JSON.stringify(log.details); } catch { msg = String(log.details); }
+        }
+        return {
+          id: log.id,
+          timestamp: new Date(log.created_at).toLocaleString('pt-BR'),
+          level: log.level || 'INFO',
+          action: log.action || 'UNKNOWN',
+          profile,
+          value,
+          pair,
+          message: msg,
+          isSupabase: true
+        };
+      } catch {
+        return {
+          id: log.id || Math.random().toString(),
+          timestamp: 'N/A',
+          level: 'ERROR',
+          action: 'PARSE_ERROR',
+          profile: '-',
+          value: '-',
+          pair: '-',
+          message: 'Erro ao processar log',
+          isSupabase: true
+        };
+      }
     })
     : localLogs.map(log => ({
       ...log,

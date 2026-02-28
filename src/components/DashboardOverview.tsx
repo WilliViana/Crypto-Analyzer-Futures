@@ -30,7 +30,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [isClosingAll, setIsClosingAll] = useState(false);
     const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
     const [isClosingSelected, setIsClosingSelected] = useState(false);
-    const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number }[] }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
+    const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number }[]; bestTradeSymbol?: string; worstTradeSymbol?: string }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
+    const [metricTooltip, setMetricTooltip] = useState<string | null>(null);
+    const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
+    const [livePrice, setLivePrice] = useState<number | null>(null);
 
     useEffect(() => {
         if (totalBalance > 0) {
@@ -297,6 +300,21 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         const tpPrice = side === 'LONG' ? entryPrice * (1 + tpPct / 100) : entryPrice * (1 - tpPct / 100);
         const slPrice = side === 'LONG' ? entryPrice * (1 - slPct / 100) : entryPrice * (1 + slPct / 100);
 
+        // Fetch live price
+        useEffect(() => {
+            setLivePrice(null);
+            const fetchLive = async () => {
+                try {
+                    const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${asset.symbol}`);
+                    const data = await res.json();
+                    setLivePrice(parseFloat(data.price));
+                } catch { }
+            };
+            fetchLive();
+            const iv = setInterval(fetchLive, 3000);
+            return () => clearInterval(iv);
+        }, [asset.symbol]);
+
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
                 <div className="bg-[#151A25] border border-[#2A303C] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -337,6 +355,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                     {isPositive ? '+' : ''}{asset.unrealizedPnL.toFixed(2)} ({pnlPercent}%)
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Live Price */}
+                        <div className="bg-blue-900/10 p-3 rounded-lg border border-blue-500/20 flex justify-between items-center">
+                            <span className="text-[10px] text-blue-400 uppercase font-bold flex items-center gap-1"><Activity size={10} className="animate-pulse" /> Preço Atual (Real-Time)</span>
+                            <span className="text-blue-400 font-mono font-bold text-lg">{livePrice ? `$${livePrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : '...'}</span>
                         </div>
 
                         {/* TP/SL Values */}
@@ -385,6 +409,39 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
     return (
         <div className="flex flex-col gap-6 animate-fade-in pb-10">
+            {/* Metric Tooltip */}
+            {metricTooltip && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setMetricTooltip(null)}>
+                    <div className="bg-[#151A25] border border-[#2A303C] rounded-xl p-6 max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-3">
+                            <h4 className="text-white font-bold">O que é?</h4>
+                            <button onClick={() => setMetricTooltip(null)} className="text-gray-400 hover:text-white"><X size={16} /></button>
+                        </div>
+                        <p className="text-gray-400 text-sm leading-relaxed">{metricTooltip}</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Trade Detail Mini Modal */}
+            {tradeDetailModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setTradeDetailModal(null)}>
+                    <div className={`bg-[#151A25] border rounded-xl p-6 max-w-sm shadow-2xl ${tradeDetailModal === 'best' ? 'border-green-500/30' : 'border-red-500/30'}`} onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className={`font-bold flex items-center gap-2 ${tradeDetailModal === 'best' ? 'text-green-400' : 'text-red-400'}`}>
+                                {tradeDetailModal === 'best' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                                {tradeDetailModal === 'best' ? 'Melhor Trade' : 'Pior Trade'}
+                            </h4>
+                            <button onClick={() => setTradeDetailModal(null)} className="text-gray-400 hover:text-white"><X size={16} /></button>
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex justify-between text-sm"><span className="text-gray-500">Resultado</span><span className={`font-mono font-bold ${tradeDetailModal === 'best' ? 'text-green-400' : 'text-red-400'}`}>{tradeDetailModal === 'best' ? `+$${bestTrade.toFixed(2)}` : `$${worstTrade.toFixed(2)}`}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-500">Período</span><span className="text-white font-mono">{apiStats.totalTrades > 0 ? `Últimos ${apiStats.totalTrades} trades` : 'Últimos 500 trades'}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-500">Fonte</span><span className="text-white font-mono text-[11px]">Binance Futures API</span></div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {selectedOrder && <OrderModal asset={selectedOrder} onClose={() => setSelectedOrder(null)} />}
 
             {/* TradingView Chart (Optional) */}
@@ -414,33 +471,33 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <div className="absolute top-3 right-3 p-2 bg-primary/10 rounded-lg text-primary"><DollarSign size={14} /></div>
                 </div>
 
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">PnL Não Realizado</div>
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-blue-500/30 transition-colors" onClick={() => setMetricTooltip('PnL Não Realizado é o lucro ou prejuízo das suas posições abertas. Ele muda em tempo real conforme o preço dos ativos. Só se torna "realizado" quando você fecha a posição.')}>
+                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">PnL Não Realizado ⓘ</div>
                     <div className={`text-2xl font-mono font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </div>
                     <div className="absolute top-3 right-3 p-2 bg-blue-500/10 rounded-lg text-blue-500"><Activity size={14} /></div>
                 </div>
 
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Posições</div>
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-colors" onClick={() => setMetricTooltip('Posições são os trades (ordens) atualmente abertos na sua conta. Cada posição representa um ativo sendo negociado com alavancagem.')}>
+                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Posições ⓘ</div>
                     <div className="text-2xl font-mono font-bold text-white">{assets.length}</div>
                     <div className="absolute top-3 right-3 p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Layers size={14} /></div>
                 </div>
 
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Win Rate</div>
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-purple-500/30 transition-colors" onClick={() => setMetricTooltip('Win Rate é a porcentagem de trades lucrativos em relação ao total de trades realizados. Ex: 60% significa que de cada 10 trades, 6 foram positivos.')}>
+                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Win Rate ⓘ</div>
                     <div className="text-2xl font-mono font-bold text-white">{winRate}%</div>
                     <div className="absolute top-3 right-3 p-2 bg-purple-500/10 rounded-lg text-purple-500"><PieChart size={14} /></div>
                 </div>
 
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-green-500/30 transition-colors" onClick={() => setTradeDetailModal('best')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Melhor Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-green-400">+${bestTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp size={14} /></div>
                 </div>
 
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-red-500/30 transition-colors" onClick={() => setTradeDetailModal('worst')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Pior Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-red-400">${worstTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-red-500/10 rounded-lg text-red-500"><TrendingDown size={14} /></div>

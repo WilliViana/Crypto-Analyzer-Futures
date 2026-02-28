@@ -385,10 +385,10 @@ export default function App() {
                 continue;
               }
 
-              // Check if enough margin available (minimum $5 needed)
-              if (availableBalance < 5) {
-                addLog(`SKIP: ${symbol} - Margem insuficiente ($${availableBalance.toFixed(2)} disponível)`, 'WARNING');
-                continue;
+              // Check if enough margin available (minimum $10 needed)
+              if (availableBalance < 10) {
+                addLog(`SKIP: Sem margem ($${availableBalance.toFixed(2)} disponível) - aguardando liberar capital`, 'WARNING');
+                break; // Break entire loop - no point checking more symbols
               }
 
               const side = analysis.signal;
@@ -531,7 +531,7 @@ export default function App() {
         return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
       case 'logs': return <AuditLog logs={logs} />;
       case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
-      case 'history': return <TradeHistory trades={trades} lang={lang} />;
+      case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
       case 'backtest': return <Backtest profiles={profiles} lang={lang} />;
       case 'admin': return <AdminPanel lang={lang} />;
       case 'profile': return <UserProfile lang={lang} />;
