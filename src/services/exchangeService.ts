@@ -171,12 +171,13 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
         if (symbolInfo) pricePrecision = symbolInfo.pricePrecision;
       } catch (e) { /* use default */ }
 
-      // Common params for TP/SL (no timeInForce — not valid for STOP_MARKET/TAKE_PROFIT_MARKET)
+      // Common params for TP/SL
       const commonParams: any = {
         symbol: order.symbol,
         side: closeSide,
         quantity: fixPrecision(finalQty, qtyPrecision),
-        workingType: 'MARK_PRICE'
+        workingType: 'MARK_PRICE',
+        timeInForce: 'GTE_GTC',
       };
 
       // Hedge Mode: use positionSide, NO reduceOnly
@@ -192,7 +193,11 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
           ...commonParams,
           type: 'STOP_MARKET',
           stopPrice: fixPrecision(order.stopLossPrice, pricePrecision),
+          closePosition: 'true',
         });
+        // Remove quantity and reduceOnly when using closePosition
+        delete tpSlOrders[tpSlOrders.length - 1].quantity;
+        delete tpSlOrders[tpSlOrders.length - 1].reduceOnly;
       }
 
       if (order.takeProfitPrice) {
@@ -200,7 +205,11 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
           ...commonParams,
           type: 'TAKE_PROFIT_MARKET',
           stopPrice: fixPrecision(order.takeProfitPrice, pricePrecision),
+          closePosition: 'true',
         });
+        // Remove quantity and reduceOnly when using closePosition
+        delete tpSlOrders[tpSlOrders.length - 1].quantity;
+        delete tpSlOrders[tpSlOrders.length - 1].reduceOnly;
       }
 
       // Execute TP/SL orders sequentially
@@ -209,12 +218,23 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
           await callBinanceProxy('/fapi/v1/order', 'POST', o, exchange);
           console.log(`[TP/SL] ✅ Placed ${o.type} at ${o.stopPrice}`);
         } catch (err: any) {
-          console.error(`[TP/SL ERROR] Failed to place ${o.type}:`, err);
-          await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
-            symbol: order.symbol,
-            action: `PLACE_${o.type}`,
-            error: err.message
-          });
+          console.warn(`[TP/SL] First attempt failed for ${o.type}, trying without closePosition...`);
+          try {
+            // Fallback: use quantity + reduceOnly instead of closePosition
+            const fallback = { ...o };
+            delete fallback.closePosition;
+            fallback.quantity = fixPrecision(finalQty, qtyPrecision);
+            if (positionSide === 'BOTH') fallback.reduceOnly = 'true';
+            await callBinanceProxy('/fapi/v1/order', 'POST', fallback, exchange);
+            console.log(`[TP/SL] ✅ Placed ${o.type} (fallback) at ${o.stopPrice}`);
+          } catch (err2: any) {
+            console.error(`[TP/SL ERROR] Failed ${o.type}:`, err2);
+            await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
+              symbol: order.symbol,
+              action: `PLACE_${o.type}`,
+              error: err2.message
+            });
+          }
         }
       }
     }
