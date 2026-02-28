@@ -49,7 +49,7 @@ export interface StrategyProfile {
   takeProfit: number;
   maxDrawdown?: number;
   // New Granular Config
-  indicators: AdvancedIndicators; 
+  indicators: AdvancedIndicators;
   useDivergences: boolean;
   useCandlePatterns: boolean;
 }
@@ -98,7 +98,7 @@ export interface Exchange {
 export interface RealAccountData {
   totalBalance: number;
   unrealizedPnL: number;
-  assets: { symbol: string; amount: number; price: number; value: number; unrealizedPnL: number; allocation?: number }[];
+  assets: { symbol: string; amount: number; price: number; value: number; unrealizedPnL: number; allocation?: number; initialMargin?: number; strategyName?: string }[];
   isSimulated?: boolean;
 }
 
@@ -129,15 +129,15 @@ export type OrderSide = 'BUY' | 'SELL';
 export type OrderType = 'MARKET' | 'LIMIT';
 
 export interface OrderRequest {
-    symbol: string;
-    side: OrderSide;
-    type: OrderType;
-    quantity: number;
-    price?: number;
-    leverage: number;
-    stopLossPrice?: number;
-    takeProfitPrice?: number;
-    clientOrderId?: string; // New field for tracking strategy on exchange
+  symbol: string;
+  side: OrderSide;
+  type: OrderType;
+  quantity: number;
+  price?: number;
+  leverage: number;
+  stopLossPrice?: number;
+  takeProfitPrice?: number;
+  clientOrderId?: string; // New field for tracking strategy on exchange
 }
 
 export type LeverageOption = 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60 | 65 | 70 | 75 | 80 | 85 | 90 | 95 | 100;

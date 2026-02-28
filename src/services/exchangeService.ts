@@ -228,12 +228,18 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
             await callBinanceProxy('/fapi/v1/order', 'POST', fallback, exchange);
             console.log(`[TP/SL] ✅ Placed ${o.type} (fallback) at ${o.stopPrice}`);
           } catch (err2: any) {
-            console.error(`[TP/SL ERROR] Failed ${o.type}:`, err2);
-            await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
-              symbol: order.symbol,
-              action: `PLACE_${o.type}`,
-              error: err2.message
-            });
+            // Only log to audit if it's NOT a known testnet limitation (-4120)
+            if (err2.message?.includes('-4120')) {
+              console.warn(`[TP/SL] Testnet does not support ${o.type} — skipped.`);
+            } else {
+              console.error(`[TP/SL ERROR] Failed ${o.type}:`, err2);
+              await addAuditLog(AUDIT_ACTIONS.ORDER_FAILED, 'WARN', {
+                symbol: order.symbol,
+                action: `PLACE_${o.type}`,
+                error: err2.message,
+                profileName
+              });
+            }
           }
         }
       }

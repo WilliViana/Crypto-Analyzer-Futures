@@ -308,6 +308,9 @@ export default function App() {
 
   const scanIndexRef = useRef({ profileIdx: 0, batchIdx: 0 });
   const openPositionsRef = useRef<Set<string>>(new Set());
+  const profileMapRef = useRef<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('profileMap') || '{}'); } catch { return {}; }
+  })();
 
   useEffect(() => {
     if (!isRunning) {
@@ -330,10 +333,12 @@ export default function App() {
         const idx = scanIndexRef.current;
 
         // Fetch open positions to avoid duplicates
+        let availableBalance = 0;
         try {
           const accountData = await callBinanceProxy('/fapi/v2/account', 'GET', {}, activeExchange);
           const positions = (accountData.positions || []).filter((p: any) => Math.abs(parseFloat(p.positionAmt)) > 0);
           openPositionsRef.current = new Set(positions.map((p: any) => p.symbol));
+          availableBalance = parseFloat(accountData.availableBalance || '0');
         } catch (e) {
           // Keep previous positions set if fetch fails
         }
@@ -380,6 +385,12 @@ export default function App() {
                 continue;
               }
 
+              // Check if enough margin available (minimum $5 needed)
+              if (availableBalance < 5) {
+                addLog(`SKIP: ${symbol} - Margem insuficiente ($${availableBalance.toFixed(2)} disponível)`, 'WARNING');
+                continue;
+              }
+
               const side = analysis.signal;
               const reasons = analysis.details.join(', ');
               addLog(`GATILHO [${currentProfile.name}]: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
@@ -396,11 +407,13 @@ export default function App() {
                 stopLossPrice: sl, takeProfitPrice: tp
               }, activeExchange, currentProfile.name).then(res => {
                 if (res.success) {
+                  profileMapRef.current[symbol] = currentProfile.name;
+                  try { localStorage.setItem('profileMap', JSON.stringify(profileMapRef.current)); } catch { }
                   addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)}`, 'SUCCESS');
                   fetchRealData();
                 } else {
                   openPositionsRef.current.delete(symbol); // Remove if failed
-                  addLog(`ERRO [${currentProfile.name}]: Falha ao executar ${symbol}: ${res.message}`, 'ERROR');
+                  addLog(`ERRO [${currentProfile.name}]: Falha ${symbol}: ${res.message}`, 'ERROR');
                 }
               });
             } else {
@@ -428,7 +441,12 @@ export default function App() {
     const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
     if (activeExchange) {
       const data = await fetchRealAccountData(activeExchange);
-      setRealPortfolio(data);
+      // Inject profileName from our local map
+      const assetsWithProfile = data.assets.map(a => ({
+        ...a,
+        strategyName: profileMapRef.current[a.symbol] || a.strategyName
+      }));
+      setRealPortfolio({ ...data, assets: assetsWithProfile });
     }
   }, [exchanges]);
 
