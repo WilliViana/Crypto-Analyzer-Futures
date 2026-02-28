@@ -54,19 +54,58 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
     return <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${colors[action] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>{action}</span>;
   };
 
+  // Parse details to extract structured columns
+  const parseDetails = (details: any) => {
+    if (!details) return { profile: '-', value: '-', pair: '-', extra: '' };
+
+    let parsed = details;
+    if (typeof details === 'string') {
+      try { parsed = JSON.parse(details); } catch { return { profile: '-', value: '-', pair: '-', extra: details }; }
+    }
+
+    const profile = parsed.profileName || parsed.profile || '-';
+    const symbol = parsed.symbol || '-';
+    const pair = symbol !== '-' ? symbol.replace('USDT', '/USDT').replace('BUSD', '/BUSD') : '-';
+
+    // Value: quantity * price, or just quantity
+    let value = '-';
+    if (parsed.quantity) {
+      value = `${parseFloat(parsed.quantity).toFixed(4)}`;
+      if (parsed.leverage) value += ` (${parsed.leverage}x)`;
+    }
+
+    // Build extra info string
+    const extraParts: string[] = [];
+    if (parsed.side) extraParts.push(parsed.side);
+    if (parsed.orderId) extraParts.push(`#${parsed.orderId}`);
+    if (parsed.error) extraParts.push(`❌ ${parsed.error}`);
+    if (parsed.action) extraParts.push(parsed.action);
+
+    return { profile, value, pair, extra: extraParts.join(' | ') };
+  };
+
   // Merge and format logs
   const combinedLogs = showSupabase
-    ? supabaseLogs.map(log => ({
-      id: log.id,
-      timestamp: new Date(log.created_at).toLocaleString('pt-BR'),
-      level: log.level,
-      action: log.action,
-      message: JSON.stringify(log.details),
-      isSupabase: true
-    }))
+    ? supabaseLogs.map(log => {
+      const { profile, value, pair, extra } = parseDetails(log.details);
+      return {
+        id: log.id,
+        timestamp: new Date(log.created_at).toLocaleString('pt-BR'),
+        level: log.level,
+        action: log.action,
+        profile,
+        value,
+        pair,
+        message: extra || JSON.stringify(log.details),
+        isSupabase: true
+      };
+    })
     : localLogs.map(log => ({
       ...log,
       action: 'LOCAL',
+      profile: '-',
+      value: '-',
+      pair: '-',
       isSupabase: false
     }));
 
@@ -124,29 +163,47 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
           <table className="w-full text-left text-sm text-gray-400">
             <thead className="bg-black/20 text-xs uppercase font-bold text-gray-500 border-b border-[#2A303C]">
               <tr>
-                <th className="p-4 w-40">Horário</th>
-                <th className="p-4 w-28">Nível</th>
-                <th className="p-4 w-40">Ação</th>
-                <th className="p-4">Detalhes</th>
+                <th className="p-3 w-36">Horário</th>
+                <th className="p-3 w-24">Nível</th>
+                <th className="p-3 w-32">Ação</th>
+                <th className="p-3 w-28">Perfil</th>
+                <th className="p-3 w-28">Par</th>
+                <th className="p-3 w-32">Valor</th>
+                <th className="p-3">Detalhes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2A303C]/50 font-mono">
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-gray-600 italic">
+                  <td colSpan={7} className="p-8 text-center text-gray-600 italic">
                     {loading ? 'Carregando logs...' : 'Nenhum log encontrado.'}
                   </td>
                 </tr>
               ) : (
                 filteredLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-white/5 transition-colors group">
-                    <td className="p-4 text-xs text-gray-500 flex items-center gap-2">
-                      <Clock size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <td className="p-3 text-xs text-gray-500 flex items-center gap-1">
+                      <Clock size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                       {log.timestamp}
                     </td>
-                    <td className="p-4">{getLevelBadge(log.level)}</td>
-                    <td className="p-4">{getActionBadge(log.action || 'LOCAL')}</td>
-                    <td className={`p-4 text-xs ${log.level === 'ERROR' ? 'text-red-400' : log.level === 'SUCCESS' ? 'text-green-400' : 'text-gray-300'}`}>
+                    <td className="p-3">{getLevelBadge(log.level)}</td>
+                    <td className="p-3">{getActionBadge(log.action || 'LOCAL')}</td>
+                    <td className="p-3 text-xs">
+                      {log.profile !== '-' ? (
+                        <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-bold">
+                          {log.profile}
+                        </span>
+                      ) : (
+                        <span className="text-gray-600">-</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-xs font-bold text-yellow-400">
+                      {log.pair !== '-' ? log.pair : <span className="text-gray-600">-</span>}
+                    </td>
+                    <td className="p-3 text-xs text-cyan-400">
+                      {log.value !== '-' ? log.value : <span className="text-gray-600">-</span>}
+                    </td>
+                    <td className={`p-3 text-xs ${log.level === 'ERROR' ? 'text-red-400' : log.level === 'SUCCESS' ? 'text-green-400' : 'text-gray-300'}`}>
                       {log.message}
                     </td>
                   </tr>

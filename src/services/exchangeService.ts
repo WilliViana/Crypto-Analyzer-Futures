@@ -10,7 +10,7 @@ function fixPrecision(value: number, precision: number): string {
   return rounded.toFixed(precision);
 }
 
-async function callBinanceProxy(endpoint: string, method: string, params: any, exchange: Exchange) {
+export async function callBinanceProxy(endpoint: string, method: string, params: any, exchange: Exchange) {
   if (!exchange.apiKey || !exchange.apiSecret) throw new Error("Credenciais ausentes.");
   const edgeFunctionUrl = `https://bhigvgfkttvjibvlyqpl.supabase.co/functions/v1/binance-proxy`;
   const payload = { endpoint, method, params, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret, isTestnet: exchange.isTestnet } };

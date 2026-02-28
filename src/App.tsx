@@ -20,7 +20,7 @@ import UserProfile from './components/UserProfile';
 import InformationTab from './components/InformationTab';
 
 import { fetchHistoricalCandles } from './services/marketService';
-import { fetchRealAccountData, executeOrder, fetchMarketInfo } from './services/exchangeService';
+import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { supabase } from './services/supabaseClient';
 import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
@@ -307,6 +307,7 @@ export default function App() {
   exchangesRef.current = exchanges;
 
   const scanIndexRef = useRef({ profileIdx: 0, batchIdx: 0 });
+  const openPositionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isRunning) {
@@ -328,12 +329,21 @@ export default function App() {
 
         const idx = scanIndexRef.current;
 
+        // Fetch open positions to avoid duplicates
+        try {
+          const accountData = await callBinanceProxy('/fapi/v2/account', 'GET', {}, activeExchange);
+          const positions = (accountData.positions || []).filter((p: any) => Math.abs(parseFloat(p.positionAmt)) > 0);
+          openPositionsRef.current = new Set(positions.map((p: any) => p.symbol));
+        } catch (e) {
+          // Keep previous positions set if fetch fails
+        }
+
         // Reset profile cycle when done
         if (idx.profileIdx >= allProfiles.length) {
           const nextBatch = idx.batchIdx + BATCH_SIZE;
           if (nextBatch >= pairs.length) {
             idx.batchIdx = 0;
-            addLog("CICLO: Varredura concluída. Reiniciando...", "SYSTEM");
+            addLog(`CICLO: Varredura concluída (${openPositionsRef.current.size} posições abertas). Reiniciando...`, "SYSTEM");
           } else {
             idx.batchIdx = nextBatch;
           }
@@ -364,23 +374,33 @@ export default function App() {
             const analysis = unifiedTechnicalAnalysis(candles, currentProfile);
 
             if (analysis.signal && analysis.signal !== 'NEUTRAL' && analysis.confidence >= currentProfile.confidenceThreshold) {
+              // Check if position already open for this symbol
+              if (openPositionsRef.current.has(symbol)) {
+                addLog(`SKIP: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - Já tem posição aberta`, 'WARNING');
+                continue;
+              }
+
               const side = analysis.signal;
               const reasons = analysis.details.join(', ');
-              addLog(`GATILHO: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
+              addLog(`GATILHO [${currentProfile.name}]: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
 
               const price = candles[candles.length - 1].close;
               const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
               const tp = side === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100);
+
+              // Add to open positions immediately to prevent duplicates
+              openPositionsRef.current.add(symbol);
 
               executeOrder({
                 symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
                 stopLossPrice: sl, takeProfitPrice: tp
               }, activeExchange, currentProfile.name).then(res => {
                 if (res.success) {
-                  addLog(`AUTO: Ordem executada em ${symbol}.`, 'SUCCESS');
+                  addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)}`, 'SUCCESS');
                   fetchRealData();
                 } else {
-                  addLog(`ERRO: Falha ao executar ${symbol}: ${res.message}`, 'ERROR');
+                  openPositionsRef.current.delete(symbol); // Remove if failed
+                  addLog(`ERRO [${currentProfile.name}]: Falha ao executar ${symbol}: ${res.message}`, 'ERROR');
                 }
               });
             } else {

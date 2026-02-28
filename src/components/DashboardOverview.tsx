@@ -403,13 +403,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
 
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Melhor Trade</div>
+                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Melhor Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-green-400">+${bestTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp size={14} /></div>
                 </div>
 
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Pior Trade</div>
+                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Pior Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-red-400">${worstTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-red-500/10 rounded-lg text-red-500"><TrendingDown size={14} /></div>
                 </div>
