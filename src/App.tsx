@@ -353,8 +353,8 @@ export default function App() {
                   fetchRealData();
                 }
               });
-            } else if (analysis.confidence > 20) {
-              addLog(`MONITORANDO: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - ${analysis.details.join(', ')}`, 'INFO');
+            } else {
+              addLog(`MONITOR: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - ${analysis.details.join(', ') || 'Sem sinal'}`, 'INFO');
             }
           }
           setProfileIndex(p => p + 1);
