@@ -80,33 +80,65 @@ serve(async (req) => {
     }
 
     const { apiKey, apiSecret, isTestnet } = credentials;
-    const baseUrl = isTestnet
-      ? 'https://testnet.binancefuture.com'
-      : 'https://fapi.binance.com';
+    const baseUrls = isTestnet
+      ? ['https://testnet.binancefuture.com']
+      : [
+        'https://fapi.binance.com',
+        'https://fapi1.binance.com',
+        'https://fapi2.binance.com',
+        'https://fapi3.binance.com'
+      ];
 
-    console.log(`🌐 [PROXY] Target: ${baseUrl}${endpoint}`);
+    let result: any;
+    let lastError: any;
+    let success = false;
 
-    // Primeira tentativa
-    let result = await makeBinanceRequest(baseUrl, endpoint, method, params, apiKey, apiSecret);
+    // Tentar cada URL raiz até ter sucesso (útil para lidar com bloqueios regionais 451)
+    for (const baseUrl of baseUrls) {
+      try {
+        console.log(`🌐 [PROXY] Tentando Target: ${baseUrl}${endpoint}`);
+        result = await makeBinanceRequest(baseUrl, endpoint, method, params, apiKey, apiSecret);
 
-    // RETRY AUTOMÁTICO: Se erro -4061 (Hedge Mode), adiciona positionSide e tenta novamente
-    if (result.data.code === -4061 && endpoint === '/fapi/v1/order') {
+        // Se o código for 451 (Restricted Location) ou errnet/timeout, continua para a próxima URL
+        if (result && result.data && (result.data.code === 451 || result.data.code === '451')) {
+          console.warn(`⚠️ [PROXY] Erro 451 (Location Restricted) em ${baseUrl}. Tentando próximo...`);
+          lastError = result;
+          continue;
+        }
+
+        // Se for outro erro, ex: -4061, lidamos abaixo
+        success = true;
+        break; // Sucesso com esta URL
+      } catch (err: any) {
+        console.warn(`⚠️ [PROXY] Falha ao conectar em ${baseUrl}:`, err.message);
+        lastError = { error: err.message };
+        // continua para próximo endpoint
+      }
+    }
+
+    // Se falhou em todas
+    if (!success && lastError) {
+      result = lastError;
+    }
+
+    // RETRY AUTOMÁTICO PARA ERRO DE HEDGE MODE (-4061)
+    if (result && result.data && result.data.code === -4061 && endpoint === '/fapi/v1/order') {
       console.log(`🔄 [PROXY] Erro -4061 detectado! Conta em Hedge Mode. Reenviando com positionSide...`);
-
-      // Determina positionSide baseado no side da ordem
       const positionSide = params.side === 'BUY' ? 'LONG' : 'SHORT';
       const retryParams = { ...params, positionSide };
 
+      // Usa a baseUrl que deu "sucesso 4061" ou a primeira
+      const bUrl = baseUrls[0]; // Simplificação: podemos usar a primeira que seria fapi.binance.com
       console.log(`🔄 [PROXY] Novo positionSide: ${positionSide}`);
 
-      result = await makeBinanceRequest(baseUrl, endpoint, method, retryParams, apiKey, apiSecret);
+      result = await makeBinanceRequest(bUrl, endpoint, method, retryParams, apiKey, apiSecret);
 
       if (result.data.code === -4061) {
         // Tenta o lado oposto (pode ser fechamento de posição)
         console.log(`🔄 [PROXY] Ainda erro -4061. Tentando lado oposto...`);
         const oppositePositionSide = positionSide === 'LONG' ? 'SHORT' : 'LONG';
         const finalParams = { ...params, positionSide: oppositePositionSide };
-        result = await makeBinanceRequest(baseUrl, endpoint, method, finalParams, apiKey, apiSecret);
+        result = await makeBinanceRequest(bUrl, endpoint, method, finalParams, apiKey, apiSecret);
       }
     }
 

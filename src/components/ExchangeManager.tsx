@@ -113,10 +113,22 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
         } catch (error: any) {
             console.error(error);
             const errorMsg = error?.message || String(error);
-            addLog(`Erro ao conectar: ${errorMsg}`, 'ERROR');
-            setValidationError(errorMsg.includes('Failed to fetch')
-                ? 'Erro de conexão com o servidor. Verifique sua internet e tente novamente.'
-                : `Erro: ${errorMsg}`);
+            let friendlyError = errorMsg;
+
+            if (errorMsg.includes('451') || errorMsg.includes('restricted location') || errorMsg.includes('Eligibility')) {
+                friendlyError = 'Binance bloqueou a conexão por restrição geográfica. Isso ocorre porque o servidor proxy está em uma região restrita. Para contas REAIS, use uma VPN ou ative o modo TESTNET para testes.';
+            } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('Load failed')) {
+                friendlyError = 'Erro de conexão com o servidor. Verifique sua internet e tente novamente.';
+            } else if (errorMsg.includes('-2015') || errorMsg.includes('Invalid API-key')) {
+                friendlyError = 'Chave API inválida. Verifique se a API Key e Secret estão corretos e se as permissões Futures estão habilitadas.';
+            } else if (errorMsg.includes('-1021') || errorMsg.includes('Timestamp')) {
+                friendlyError = 'Erro de sincronização de tempo. Ajuste o relógio do seu dispositivo.';
+            } else if (errorMsg.includes('Proxy')) {
+                friendlyError = errorMsg; // Already has proxy context
+            }
+
+            addLog(`Erro ao conectar: ${friendlyError}`, 'ERROR');
+            setValidationError(friendlyError);
         } finally {
             setValidating(false);
         }

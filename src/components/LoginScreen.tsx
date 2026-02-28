@@ -78,8 +78,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, lang, setLang }) => 
                 onLogin();
             }
         } catch (err: any) {
-            setErrorMsg(err.message);
-            notify('error', 'Falha na Operação', err.message);
+            const msg = err?.message || String(err);
+            let friendlyMsg = msg;
+
+            // User-friendly error messages
+            if (msg.includes('User already registered') || msg.includes('already been registered')) {
+                friendlyMsg = 'Este e-mail já possui cadastro. Use a opção "Voltar ao Login" abaixo.';
+                setMode('login');
+            } else if (msg.includes('Load failed') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+                friendlyMsg = 'Erro de conexão com o servidor. Verifique sua internet e tente novamente.';
+            } else if (msg.includes('rate limit') || msg.includes('429')) {
+                friendlyMsg = 'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.';
+            } else if (msg.includes('Invalid login credentials')) {
+                friendlyMsg = 'E-mail ou senha incorretos. Verifique e tente novamente.';
+            } else if (msg.includes('Email not confirmed')) {
+                friendlyMsg = 'E-mail ainda não confirmado. Verifique sua caixa de entrada.';
+            }
+
+            setErrorMsg(friendlyMsg);
+            notify('error', 'Falha na Operação', friendlyMsg);
         } finally {
             setIsLoading(false);
         }

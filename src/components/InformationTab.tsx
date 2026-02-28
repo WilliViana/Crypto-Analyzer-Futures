@@ -46,25 +46,25 @@ const InformationTab: React.FC<InformationTabProps> = ({ lang }) => {
                 <p className="text-gray-400">Entenda como nossa IA opera e maximize seus resultados.</p>
             </div>
 
-            <Section id="how-it-works" title="Como Funciona a IA" icon={BookOpen}>
+            <Section id="how-it-works" title="Como Funciona o CAP.PRO" icon={BookOpen}>
                 <div className="space-y-4 text-gray-300 leading-relaxed">
                     <p>
-                        O Crypto Analyzer v10 utiliza um motor algorítmico avançado que monitora o mercado 24/7.
-                        Nossa IA analisa múltiplos indicadores técnicos (RSI, MACD, Bollinger Bands) e o sentimento do mercado
-                        para identificar oportunidades de alta probabilidade.
+                        O <strong>CAP.PRO (Quantum HFT Terminal)</strong> utiliza um motor algorítmico avançado gerido via browser.
+                        Ele recebe sinais de uma API segura, analisa sua conta e executa ordens na Binance Futures
+                        de forma automática e em milissegundos.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                         <div className="bg-black/30 p-4 rounded-xl border border-white/5">
-                            <div className="text-primary font-bold mb-2">1. Coleta de Dados</div>
-                            <p className="text-xs text-gray-500">Monitoramos preços, volume e ordem book de dezenas de pares simultaneamente.</p>
+                            <div className="text-primary font-bold mb-2">1. Conexão Segura</div>
+                            <p className="text-xs text-gray-500">A chave API não tem permissão de saque. Usamos um proxy (Shadow Profile) para proteger suas chaves.</p>
                         </div>
                         <div className="bg-black/30 p-4 rounded-xl border border-white/5">
-                            <div className="text-primary font-bold mb-2">2. Validação</div>
-                            <p className="text-xs text-gray-500">Cada sinal é validado por múltiplos perfis de risco antes da execução.</p>
+                            <div className="text-primary font-bold mb-2">2. Perfis de Margem</div>
+                            <p className="text-xs text-gray-500">Você escolhe o capital inicial, alavancagem máxima (ex: 20x) e Stop Loss global.</p>
                         </div>
                         <div className="bg-black/30 p-4 rounded-xl border border-white/5">
-                            <div className="text-primary font-bold mb-2">3. Execução</div>
-                            <p className="text-xs text-gray-500">Entradas e saídas precisas com gestão automática de Stop Loss e Take Profit.</p>
+                            <div className="text-primary font-bold mb-2">3. Execução Automatizada</div>
+                            <p className="text-xs text-gray-500">Ao receber um sinal do backend, o motor calcula o rateio, valida e executa na Exchange.</p>
                         </div>
                     </div>
                 </div>
@@ -139,10 +139,10 @@ const InformationTab: React.FC<InformationTabProps> = ({ lang }) => {
                     <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-4">
                         <AlertTriangle className="text-red-400 shrink-0 mt-1" />
                         <div>
-                            <h4 className="text-red-400 font-bold mb-1">A Regra de Ouro</h4>
+                            <h4 className="text-red-400 font-bold mb-1">Margem Insuficiente (-2019)</h4>
                             <p className="text-sm text-gray-300">
-                                Nunca arrisque dinheiro que você não pode perder. O mercado de criptomoedas é altamente volátil.
-                                Recomendamos começar com alavancagem baixa (1x-3x) até se sentir confortável.
+                                O erro <strong>-2019</strong> ocorre se você abrir muitas ordens e sua margem ficar muito baixa.
+                                Mantenha sempre um saldo de segurança na Binance e use a aba "Visão Geral" para monitorar sua margem.
                             </p>
                         </div>
                     </div>
@@ -156,10 +156,10 @@ const InformationTab: React.FC<InformationTabProps> = ({ lang }) => {
                             </p>
                         </div>
                         <div>
-                            <h4 className="text-white font-bold mb-2">Take Profit (TP)</h4>
+                            <h4 className="text-white font-bold mb-2">Drawdown e Capital</h4>
                             <p className="text-sm text-gray-400">
-                                É o alvo de lucro. O bot fecha a posição quando o preço atinge este nível.
-                                Garantir lucro no bolso é melhor do que esperar por uma alta que pode reverter.
+                                O capital da estratégia é consumido à medida que ordens são abertas.
+                                Se seu perfil tem $100 e abre uma posição de $10, restam $90. Se falhar por falta de margem, diminua o tamanho/qtd de posições.
                             </p>
                         </div>
                     </div>
