@@ -308,9 +308,9 @@ export default function App() {
 
   const scanIndexRef = useRef({ profileIdx: 0, batchIdx: 0 });
   const openPositionsRef = useRef<Set<string>>(new Set());
-  const profileMapRef = useRef<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('profileMap') || '{}'); } catch { return {}; }
-  })();
+  const profileMapRef = useRef<Record<string, string>>(
+    (() => { try { return JSON.parse(localStorage.getItem('profileMap') || '{}'); } catch { return {}; } })()
+  );
 
   useEffect(() => {
     if (!isRunning) {
