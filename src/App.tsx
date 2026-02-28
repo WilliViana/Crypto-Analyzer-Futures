@@ -441,6 +441,30 @@ export default function App() {
     const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
     if (activeExchange) {
       const data = await fetchRealAccountData(activeExchange);
+
+      // For positions without a profileMap entry, try to find from Supabase audit
+      const unmappedSymbols = data.assets.filter(a => !profileMapRef.current[a.symbol]).map(a => a.symbol);
+      if (unmappedSymbols.length > 0) {
+        try {
+          const { supabase: sb } = await import('./services/supabaseClient');
+          const { data: auditLogs } = await sb.from('audit_logs')
+            .select('details')
+            .eq('action', 'ORDER_PLACED')
+            .eq('level', 'SUCCESS')
+            .order('created_at', { ascending: false })
+            .limit(50);
+          if (auditLogs) {
+            for (const log of auditLogs) {
+              const d = log.details as any;
+              if (d?.symbol && d?.profileName && !profileMapRef.current[d.symbol]) {
+                profileMapRef.current[d.symbol] = d.profileName;
+              }
+            }
+            try { localStorage.setItem('profileMap', JSON.stringify(profileMapRef.current)); } catch { }
+          }
+        } catch { }
+      }
+
       // Inject profileName from our local map
       const assetsWithProfile = data.assets.map(a => ({
         ...a,

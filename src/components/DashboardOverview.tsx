@@ -175,7 +175,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         const assetData = assets.find(a => a.symbol === symbol);
         if (assetData?.strategyName) return assetData.strategyName;
 
-        // 2. Look in trades
+        // 2. Check localStorage profileMap
+        try {
+            const savedMap = JSON.parse(localStorage.getItem('profileMap') || '{}');
+            if (savedMap[symbol]) return savedMap[symbol];
+        } catch { }
+
+        // 3. Look in trades
         const trade = [...trades].reverse().find(t =>
             (t.symbol === symbol || t.symbol.includes(symbol.replace('USDT', ''))) &&
             (t.status === 'OPEN' || !t.status)
@@ -283,6 +289,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         const pnlPercent = asset.initialMargin ? ((asset.unrealizedPnL / asset.initialMargin) * 100).toFixed(2) : '0';
         const isPositive = asset.unrealizedPnL >= 0;
 
+        // Find profile config for TP/SL values
+        const matchedProfile = profiles.find(p => p.name === profileName);
+        const slPct = matchedProfile?.stopLoss || 5;
+        const tpPct = matchedProfile?.takeProfit || 10;
+        const entryPrice = asset.price;
+        const tpPrice = side === 'LONG' ? entryPrice * (1 + tpPct / 100) : entryPrice * (1 - tpPct / 100);
+        const slPrice = side === 'LONG' ? entryPrice * (1 - slPct / 100) : entryPrice * (1 + slPct / 100);
+
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
                 <div className="bg-[#151A25] border border-[#2A303C] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -306,7 +320,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-black/30 p-4 rounded-xl border border-white/5">
                                 <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Preço de Entrada</div>
-                                <div className="text-white font-mono font-bold text-lg">${asset.price.toLocaleString()}</div>
+                                <div className="text-white font-mono font-bold text-lg">${entryPrice.toLocaleString()}</div>
                             </div>
                             <div className="bg-black/30 p-4 rounded-xl border border-white/5">
                                 <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Valor em USD</div>
@@ -322,6 +336,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                     {isPositive ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                                     {isPositive ? '+' : ''}{asset.unrealizedPnL.toFixed(2)} ({pnlPercent}%)
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* TP/SL Values */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-green-900/10 p-4 rounded-xl border border-green-500/20">
+                                <div className="text-[10px] text-green-400 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <TrendingUp size={10} /> Take Profit
+                                </div>
+                                <div className="text-green-400 font-mono font-bold text-lg">${tpPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                                <div className="text-[9px] text-green-400/60 mt-1">+{tpPct}% do entry</div>
+                            </div>
+                            <div className="bg-red-900/10 p-4 rounded-xl border border-red-500/20">
+                                <div className="text-[10px] text-red-400 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <TrendingDown size={10} /> Stop Loss
+                                </div>
+                                <div className="text-red-400 font-mono font-bold text-lg">${slPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                                <div className="text-[9px] text-red-400/60 mt-1">-{slPct}% do entry</div>
                             </div>
                         </div>
 
