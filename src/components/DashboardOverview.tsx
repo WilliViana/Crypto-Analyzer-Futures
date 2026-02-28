@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
-import { closePosition } from '../services/exchangeService';
+import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory } from '../services/exchangeService';
 
 interface DashboardOverviewProps {
     lang: Language;
@@ -28,6 +28,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [orderTab, setOrderTab] = useState<'positive' | 'negative'>('positive');
     const [isClosing, setIsClosing] = useState(false);
     const [isClosingAll, setIsClosingAll] = useState(false);
+    const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
+    const [isClosingSelected, setIsClosingSelected] = useState(false);
+    const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number }[] }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
 
     useEffect(() => {
         if (totalBalance > 0) {
@@ -100,6 +103,44 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         fetchHistory();
     }, [timeRange, sessionHistory]);
 
+    // Auto-refresh positions every 15s when motor is active
+    useEffect(() => {
+        const interval = setInterval(() => { onRefresh?.(); }, 15000);
+        return () => clearInterval(interval);
+    }, [onRefresh]);
+
+    // Fetch stats from Binance API
+    const fetchApiStats = useCallback(async () => {
+        const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+        if (!activeExchange) return;
+        try {
+            const [tradeHistory, incomeHistory] = await Promise.all([
+                fetchTradeHistory(activeExchange),
+                fetchIncomeHistory(activeExchange),
+            ]);
+            // Group trades by orderId proximity (within 1s) for PnL calc
+            const tradePnls = tradeHistory.filter(t => t.realizedPnl !== 0).map(t => t.realizedPnl);
+            const best = tradePnls.length > 0 ? Math.max(...tradePnls) : 0;
+            const worst = tradePnls.length > 0 ? Math.min(...tradePnls) : 0;
+            const wins = tradePnls.filter(p => p > 0).length;
+            const wr = tradePnls.length > 0 ? Math.round((wins / tradePnls.length) * 100) : 0;
+
+            // Build equity curve from income history
+            let cumulative = totalBalance;
+            const sortedIncome = [...incomeHistory].sort((a, b) => a.time - b.time);
+            const curve = sortedIncome.map(i => {
+                cumulative += i.income;
+                return { time: new Date(i.time).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: cumulative };
+            });
+
+            setApiStats({ bestTrade: best, worstTrade: worst, winRate: wr, totalTrades: tradePnls.length, equityCurve: curve });
+        } catch (e) { console.warn('[API STATS]', e); }
+    }, [exchanges, totalBalance]);
+
+    useEffect(() => {
+        fetchApiStats();
+    }, [fetchApiStats]);
+
     const displayedOrders = orderTab === 'positive' ? positiveOrders : negativeOrders;
 
     // Calculate stats
@@ -112,8 +153,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     }, [trades]);
 
     const totalPnL = useMemo(() => trades.reduce((acc, t) => acc + t.pnl, 0), [trades]);
-    const bestTrade = useMemo(() => Math.max(0, ...trades.map(t => t.pnl)), [trades]);
-    const worstTrade = useMemo(() => Math.min(0, ...trades.map(t => t.pnl)), [trades]);
+    // Use API stats if available, fallback to local trades
+    const bestTrade = apiStats.bestTrade !== 0 ? apiStats.bestTrade : Math.max(0, ...trades.map(t => t.pnl));
+    const worstTrade = apiStats.worstTrade !== 0 ? apiStats.worstTrade : Math.min(0, ...trades.map(t => t.pnl));
 
     // Filter trades by selected period
     const filteredTrades = useMemo(() => {
@@ -179,21 +221,58 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         }
     };
 
-    const handleCloseAllPositions = async () => {
+    // Close all in current tab (positive or negative)
+    const handleCloseByTab = async (tab: 'positive' | 'negative') => {
         const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-        if (!activeExchange || assets.length === 0) return;
+        if (!activeExchange) return;
+        const targets = tab === 'positive' ? positiveOrders : negativeOrders;
+        if (targets.length === 0) return;
 
         setIsClosingAll(true);
         try {
-            for (const asset of assets) {
-                const side = asset.amount > 0 ? 'SELL' : 'BUY';
-                await closePosition(asset.symbol, Math.abs(asset.amount), side as 'BUY' | 'SELL', activeExchange);
-            }
+            await closeMultiplePositions(targets, activeExchange);
             onRefresh?.();
         } catch (error: any) {
-            console.error('Close all error:', error);
+            console.error('Close tab error:', error);
         } finally {
             setIsClosingAll(false);
+        }
+    };
+
+    // Close only selected positions
+    const handleCloseSelected = async () => {
+        const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+        if (!activeExchange || selectedPositions.size === 0) return;
+
+        setIsClosingSelected(true);
+        try {
+            const targets = assets.filter(a => selectedPositions.has(a.symbol));
+            const result = await closeMultiplePositions(targets, activeExchange);
+            console.log(`[CLOSE SELECTED] ${result.success} closed, ${result.failed} failed`);
+            setSelectedPositions(new Set());
+            onRefresh?.();
+        } catch (error: any) {
+            console.error('Close selected error:', error);
+        } finally {
+            setIsClosingSelected(false);
+        }
+    };
+
+    const toggleSelection = (symbol: string) => {
+        setSelectedPositions(prev => {
+            const next = new Set(prev);
+            if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        const currentOrders = orderTab === 'positive' ? positiveOrders : negativeOrders;
+        const allSelected = currentOrders.every(a => selectedPositions.has(a.symbol));
+        if (allSelected) {
+            setSelectedPositions(new Set());
+        } else {
+            setSelectedPositions(new Set(currentOrders.map(a => a.symbol)));
         }
     };
 
@@ -382,7 +461,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                     <div className="flex-1 min-h-0 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={historyData.length > 0 ? historyData : sessionHistory}>
+                            <AreaChart data={apiStats.equityCurve.length > 0 ? apiStats.equityCurve : historyData.length > 0 ? historyData : sessionHistory}>
                                 <defs>
                                     <linearGradient id="colorEq" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -429,20 +508,44 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         </button>
                     </div>
 
+                    {/* Select All + Actions Bar */}
+                    {displayedOrders.length > 0 && (
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#2A303C] bg-black/10">
+                            <button
+                                onClick={toggleSelectAll}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-white transition-colors"
+                            >
+                                {displayedOrders.every(a => selectedPositions.has(a.symbol))
+                                    ? <CheckSquare size={12} className="text-primary" />
+                                    : <Square size={12} />
+                                }
+                                {displayedOrders.every(a => selectedPositions.has(a.symbol)) ? 'Desmarcar' : 'Selecionar Todas'}
+                            </button>
+                            <button onClick={() => { onRefresh?.(); fetchApiStats(); }} className="text-gray-500 hover:text-white transition-colors" title="Atualizar">
+                                <RefreshCw size={12} />
+                            </button>
+                        </div>
+                    )}
+
                     {/* Order List */}
                     <div className="flex-1 overflow-auto p-3 space-y-2 scrollbar-hide">
                         {displayedOrders.length > 0 ? displayedOrders.map(asset => {
                             const profileName = getProfileForAsset(asset.symbol);
+                            const isSelected = selectedPositions.has(asset.symbol);
                             return (
                                 <div
                                     key={asset.symbol}
-                                    onClick={() => setSelectedOrder(asset)}
-                                    className="flex flex-col gap-2 p-3 bg-black/20 rounded-lg border border-white/5 hover:border-primary/50 cursor-pointer group transition-all"
+                                    className={`flex flex-col gap-2 p-3 bg-black/20 rounded-lg border cursor-pointer group transition-all ${isSelected ? 'border-primary/60 bg-primary/5' : 'border-white/5 hover:border-primary/50'}`}
                                 >
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded bg-surface flex items-center justify-center text-[10px] font-bold text-white border border-white/10">{asset.symbol.substring(0, 3)}</div>
-                                            <div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); toggleSelection(asset.symbol); }}
+                                                className="text-gray-500 hover:text-primary transition-colors flex-shrink-0"
+                                            >
+                                                {isSelected ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} />}
+                                            </button>
+                                            <div onClick={() => setSelectedOrder(asset)}>
                                                 <span className="font-bold text-white text-sm block">{asset.symbol}</span>
                                                 <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${getProfileColor(profileName)}`}>
                                                     {profileName}
@@ -455,7 +558,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] mt-1 border-t border-white/5 pt-2">
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] mt-1 border-t border-white/5 pt-2" onClick={() => setSelectedOrder(asset)}>
                                         <div className="text-gray-400 uppercase">Investido: <span className="text-yellow-400 font-mono font-bold">${asset.initialMargin?.toFixed(2) || '—'}</span></div>
                                         <div className="text-gray-400 uppercase text-right">PnL: <span className={`font-mono font-bold ${asset.unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>{asset.unrealizedPnL >= 0 ? '+' : ''}{asset.unrealizedPnL.toFixed(2)}</span></div>
                                     </div>
@@ -471,16 +574,26 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         )}
                     </div>
 
-                    {/* Close All Button */}
-                    {assets.length > 0 && (
-                        <div className="p-3 border-t border-[#2A303C]">
+                    {/* Action Buttons */}
+                    {displayedOrders.length > 0 && (
+                        <div className="p-3 border-t border-[#2A303C] space-y-2">
+                            {selectedPositions.size > 0 && (
+                                <button
+                                    onClick={handleCloseSelected}
+                                    disabled={isClosingSelected}
+                                    className="w-full py-2 bg-orange-600/20 hover:bg-orange-600/40 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                                >
+                                    <XCircle size={14} />
+                                    {isClosingSelected ? 'Fechando...' : `Fechar Selecionadas (${selectedPositions.size})`}
+                                </button>
+                            )}
                             <button
-                                onClick={handleCloseAllPositions}
+                                onClick={() => handleCloseByTab(orderTab)}
                                 disabled={isClosingAll}
-                                className="w-full py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                                className={`w-full py-2 ${orderTab === 'positive' ? 'bg-green-600/20 hover:bg-green-600/40 text-green-400 border-green-500/30' : 'bg-red-600/20 hover:bg-red-600/40 text-red-400 border-red-500/30'} border rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors disabled:opacity-50`}
                             >
                                 <XCircle size={14} />
-                                {isClosingAll ? 'Fechando todas...' : `Fechar Todas (${assets.length})`}
+                                {isClosingAll ? 'Fechando...' : `Fechar ${orderTab === 'positive' ? 'Positivas' : 'Negativas'} (${displayedOrders.length})`}
                             </button>
                         </div>
                     )}

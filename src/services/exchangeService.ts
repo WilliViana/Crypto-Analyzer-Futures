@@ -319,3 +319,82 @@ export const closePosition = async (
     return { success: false, message: e.message || "Erro ao fechar posição" };
   }
 };
+
+/**
+ * Fetch trade history from Binance API
+ * Returns last 500 trades with PnL for stats
+ */
+export const fetchTradeHistory = async (exchange: Exchange): Promise<{ symbol: string; side: string; pnl: number; qty: number; price: number; time: number; realizedPnl: number }[]> => {
+  if (!exchange.apiKey) return [];
+  try {
+    const data = await callBinanceProxy('/fapi/v1/userTrades', 'GET', { limit: 500 }, exchange);
+    if (!Array.isArray(data)) return [];
+    return data.map((t: any) => ({
+      symbol: t.symbol,
+      side: t.side,
+      pnl: parseFloat(t.realizedPnl || '0'),
+      qty: parseFloat(t.qty),
+      price: parseFloat(t.price),
+      time: t.time,
+      realizedPnl: parseFloat(t.realizedPnl || '0'),
+    }));
+  } catch (e) {
+    console.error('[TRADE HISTORY]', e);
+    return [];
+  }
+};
+
+/**
+ * Fetch income history (realized PnL) for equity curve
+ */
+export const fetchIncomeHistory = async (exchange: Exchange, limit = 1000): Promise<{ income: number; time: number; symbol: string; type: string }[]> => {
+  if (!exchange.apiKey) return [];
+  try {
+    const data = await callBinanceProxy('/fapi/v1/income', 'GET', { incomeType: 'REALIZED_PNL', limit }, exchange);
+    if (!Array.isArray(data)) return [];
+    return data.map((i: any) => ({
+      income: parseFloat(i.income),
+      time: i.time,
+      symbol: i.symbol,
+      type: i.incomeType,
+    }));
+  } catch (e) {
+    console.error('[INCOME HISTORY]', e);
+    return [];
+  }
+};
+
+/**
+ * Fetch open orders (to check TP/SL status)
+ */
+export const fetchOpenOrders = async (exchange: Exchange): Promise<any[]> => {
+  if (!exchange.apiKey) return [];
+  try {
+    const data = await callBinanceProxy('/fapi/v1/openOrders', 'GET', {}, exchange);
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.error('[OPEN ORDERS]', e);
+    return [];
+  }
+};
+
+/**
+ * Close multiple positions by selection
+ */
+export const closeMultiplePositions = async (
+  positions: { symbol: string; amount: number }[],
+  exchange: Exchange
+): Promise<{ success: number; failed: number; errors: string[] }> => {
+  const result = { success: 0, failed: 0, errors: [] as string[] };
+  for (const pos of positions) {
+    try {
+      const side = pos.amount > 0 ? 'SELL' : 'BUY';
+      await closePosition(pos.symbol, Math.abs(pos.amount), side, exchange);
+      result.success++;
+    } catch (e: any) {
+      result.failed++;
+      result.errors.push(`${pos.symbol}: ${e.message}`);
+    }
+  }
+  return result;
+};
