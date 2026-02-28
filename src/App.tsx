@@ -298,40 +298,68 @@ export default function App() {
     }
   }, [isAuthenticated, exchanges]);
 
+  // Refs for stable access inside scanMarket
+  const profilesRef = useRef(profiles);
+  const selectedPairsRef = useRef(selectedPairs);
+  const exchangesRef = useRef(exchanges);
+  profilesRef.current = profiles;
+  selectedPairsRef.current = selectedPairs;
+  exchangesRef.current = exchanges;
+
+  const scanIndexRef = useRef({ profileIdx: 0, batchIdx: 0 });
+
   useEffect(() => {
-    if (isRunning) {
-      const scanMarket = async () => {
-        try {
-          const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-          if (!activeExchange || selectedPairs.length === 0) {
-            setIsRunning(false);
-            return;
+    if (!isRunning) {
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      return;
+    }
+
+    const scanMarket = async () => {
+      try {
+        const activeExchange = exchangesRef.current.find(e => e.status === 'CONNECTED');
+        const pairs = selectedPairsRef.current;
+        const allProfiles = profilesRef.current;
+
+        if (!activeExchange || pairs.length === 0) {
+          console.warn('[MOTOR] Sem exchange conectada ou sem pares selecionados');
+          setIsRunning(false);
+          return;
+        }
+
+        const idx = scanIndexRef.current;
+
+        // Reset profile cycle when done
+        if (idx.profileIdx >= allProfiles.length) {
+          const nextBatch = idx.batchIdx + BATCH_SIZE;
+          if (nextBatch >= pairs.length) {
+            idx.batchIdx = 0;
+            addLog("CICLO: Varredura concluída. Reiniciando...", "SYSTEM");
+          } else {
+            idx.batchIdx = nextBatch;
           }
+          idx.profileIdx = 0;
+          return;
+        }
 
-          if (profileIndex >= profiles.length) {
-            const nextBatch = assetBatchIndex + BATCH_SIZE;
-            if (nextBatch >= selectedPairs.length) {
-              setAssetBatchIndex(0);
-              addLog("CICLO: Varredura concluída.", "SYSTEM");
-            } else {
-              setAssetBatchIndex(nextBatch);
-            }
-            setProfileIndex(0);
-            return;
-          }
+        const currentProfile = allProfiles[idx.profileIdx];
+        if (!currentProfile || !currentProfile.active) {
+          idx.profileIdx++;
+          return;
+        }
 
-          const currentProfile = profiles[profileIndex];
-          if (!currentProfile.active) { setProfileIndex(p => p + 1); return; }
+        const currentBatch = pairs.slice(idx.batchIdx, idx.batchIdx + BATCH_SIZE);
 
-          const currentBatch = selectedPairs.slice(assetBatchIndex, assetBatchIndex + BATCH_SIZE);
+        if (currentBatch.length > 0) {
+          addLog(`CICLO: Analisando ${currentBatch.length} ativos com perfil ${currentProfile.name}...`, 'INFO');
+        }
 
-          if (currentBatch.length > 0) {
-            addLog(`CICLO: Analisando ${currentBatch.length} ativos com perfil ${currentProfile.name}...`, 'INFO');
-          }
-
-          for (const symbol of currentBatch) {
+        for (const symbol of currentBatch) {
+          try {
             const candles = await fetchHistoricalCandles(symbol, '15m');
-            if (!candles || candles.length < 50) continue;
+            if (!candles || candles.length < 50) {
+              addLog(`AVISO: ${symbol} - Dados insuficientes (${candles?.length || 0} candles)`, 'WARNING');
+              continue;
+            }
 
             const analysis = unifiedTechnicalAnalysis(candles, currentProfile);
 
@@ -351,21 +379,30 @@ export default function App() {
                 if (res.success) {
                   addLog(`AUTO: Ordem executada em ${symbol}.`, 'SUCCESS');
                   fetchRealData();
+                } else {
+                  addLog(`ERRO: Falha ao executar ${symbol}: ${res.message}`, 'ERROR');
                 }
               });
             } else {
               addLog(`MONITOR: ${symbol} ${analysis.signal} (${analysis.confidence.toFixed(1)}%) - ${analysis.details.join(', ') || 'Sem sinal'}`, 'INFO');
             }
+          } catch (symbolError: any) {
+            addLog(`ERRO: ${symbol} - ${symbolError.message}`, 'ERROR');
           }
-          setProfileIndex(p => p + 1);
-        } catch (error: any) { }
-      };
-      scanIntervalRef.current = setInterval(scanMarket, 5000);
-    } else {
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    }
+        }
+        idx.profileIdx++;
+      } catch (error: any) {
+        console.error('[MOTOR ERROR]', error);
+        addLog(`ERRO MOTOR: ${error.message}`, 'ERROR');
+      }
+    };
+
+    // Run immediately on start, then every 5s
+    scanMarket();
+    scanIntervalRef.current = setInterval(scanMarket, 5000);
+
     return () => { if (scanIntervalRef.current) clearInterval(scanIntervalRef.current); };
-  }, [isRunning, profileIndex, assetBatchIndex, profiles, selectedPairs, exchanges]);
+  }, [isRunning]);
 
   const fetchRealData = useCallback(async () => {
     const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
