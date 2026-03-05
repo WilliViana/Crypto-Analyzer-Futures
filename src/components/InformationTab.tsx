@@ -174,8 +174,7 @@ const InformationTab: React.FC<InformationTabProps> = ({ lang }) => {
                             <ChevronDown className="text-gray-500 group-open:rotate-180 transition-transform" />
                         </summary>
                         <div className="p-4 text-sm text-gray-400">
-                            Sim, neste momento o bot roda no seu navegador. É necessário manter a aba ativa para que ele monitore o mercado e execute ordens.
-                            Recomendamos usar uma janela dedicada ou um servidor VPS se desejar operação contínua 24/7.
+                            Não! O motor do CAP.PRO roda em segundo plano no servidor. Você pode fechar o navegador normalmente — as ordens continuarão sendo monitoradas e executadas automaticamente 24/7.
                         </div>
                     </details>
 
