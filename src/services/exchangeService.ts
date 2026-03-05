@@ -119,7 +119,7 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       const ticker = await callBinanceProxy('/fapi/v1/ticker/price', 'GET', { symbol: order.symbol }, exchange);
       const price = parseFloat(ticker.price);
       if (!price) throw new Error("Preço inválido.");
-      const marginUSD = 50;
+      const marginUSD = order.marginUSD || 50;
       const leverage = order.leverage || 10;
       finalQty = (marginUSD * leverage) / price;
     }

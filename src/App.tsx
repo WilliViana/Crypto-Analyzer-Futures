@@ -41,11 +41,11 @@ const DEFAULT_INDICATORS: AdvancedIndicators = {
 };
 
 const INITIAL_PROFILES_BASE: StrategyProfile[] = [
-  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false },
-  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false },
-  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false },
+  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 50, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false },
+  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 30, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 25, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
 ];
 
 export default function App() {
@@ -71,7 +71,16 @@ export default function App() {
     const saved = localStorage.getItem('cap_daily_target');
     return saved ? parseFloat(saved) : 10;
   });
-  const [dailyStartBalance, setDailyStartBalance] = useState<number>(0);
+  const [dailyStartBalance, setDailyStartBalance] = useState<number>(() => {
+    // Recuperar saldo do dia atual se existir
+    const today = new Date().toDateString();
+    const savedDate = localStorage.getItem('cap_trading_date');
+    if (savedDate === today) {
+      const savedEquity = localStorage.getItem('cap_daily_start_equity');
+      return savedEquity ? parseFloat(savedEquity) : 0;
+    }
+    return 0;
+  });
   const [dailyTargetReached, setDailyTargetReached] = useState(false);
   const [showDailyTargetModal, setShowDailyTargetModal] = useState(false);
 
@@ -397,14 +406,14 @@ export default function App() {
               // Check if enough margin available (minimum $10 needed)
               if (availableBalance < 10) {
                 addLog(`SKIP: Sem margem ($${availableBalance.toFixed(2)} disponível) - aguardando liberar capital`, 'WARNING');
-                break; // Break entire loop - no point checking more symbols
+                break;
               }
 
-              // Check capital limit per profile
-              const profileCapital = currentProfile.currentCapital || currentProfile.capital;
-              const marginNeeded = profileCapital / currentProfile.leverage; // Approx margin
-              if (marginNeeded > profileCapital) {
-                addLog(`SKIP [${currentProfile.name}]: Capital insuficiente ($${profileCapital.toFixed(2)} disponível para perfil)`, 'WARNING');
+              // --- ENVELOPE DE CAPITAL: verifica saldo livre do perfil ---
+              const freeCapital = (currentProfile.currentCapital || currentProfile.capital) - (currentProfile.allocatedCapital || 0);
+              const marginRequired = currentProfile.marginPerTrade || 20;
+              if (freeCapital < marginRequired) {
+                addLog(`SKIP [${currentProfile.name}]: Saldo insuficiente. Livre: $${freeCapital.toFixed(2)} | Necessário: $${marginRequired}`, 'WARNING');
                 continue;
               }
 
@@ -425,9 +434,14 @@ export default function App() {
               // Add to open positions immediately to prevent duplicates
               openPositionsRef.current.add(symbol);
 
+              // Aloca capital do perfil imediatamente
+              const profileId = currentProfile.id;
+              setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, allocatedCapital: (p.allocatedCapital || 0) + marginRequired } : p));
+
               executeOrder({
                 symbol, side, type: 'MARKET', quantity: 0, leverage: currentProfile.leverage,
-                stopLossPrice: sl, takeProfitPrice: tp
+                stopLossPrice: sl, takeProfitPrice: tp,
+                marginUSD: marginRequired
               }, activeExchange, currentProfile.name).then(res => {
                 if (res.success) {
                   profileMapRef.current[symbol] = currentProfile.name;
@@ -435,7 +449,9 @@ export default function App() {
                   addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)}`, 'SUCCESS');
                   fetchRealData();
                 } else {
-                  openPositionsRef.current.delete(symbol); // Remove if failed
+                  openPositionsRef.current.delete(symbol);
+                  // Devolve capital se falhou
+                  setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, allocatedCapital: Math.max(0, (p.allocatedCapital || 0) - marginRequired) } : p));
                   addLog(`ERRO [${currentProfile.name}]: Falha ${symbol}: ${res.message}`, 'ERROR');
                 }
               });
@@ -495,9 +511,26 @@ export default function App() {
       }));
       setRealPortfolio({ ...data, assets: assetsWithProfile });
 
-      // Verificar meta diária - setar saldo inicial do dia
-      if (dailyStartBalance === 0 && data.totalBalance > 0) {
+      // --- Meta diária: persistência por data ---
+      const today = new Date().toDateString();
+      const savedDate = localStorage.getItem('cap_trading_date');
+
+      if (savedDate !== today && data.totalBalance > 0) {
+        // Novo dia! Salvar saldo inicial
+        localStorage.setItem('cap_trading_date', today);
+        localStorage.setItem('cap_daily_start_equity', data.totalBalance.toString());
         setDailyStartBalance(data.totalBalance);
+        setDailyTargetReached(false);
+        addLog(`📅 Novo dia de trade iniciado. Saldo inicial: $${data.totalBalance.toFixed(2)}`, 'SYSTEM');
+      } else if (dailyStartBalance === 0 && data.totalBalance > 0) {
+        // Primeiro fetch do dia (sem reset)
+        const savedEquity = localStorage.getItem('cap_daily_start_equity');
+        const equity = savedEquity ? parseFloat(savedEquity) : data.totalBalance;
+        setDailyStartBalance(equity);
+        if (!savedEquity) {
+          localStorage.setItem('cap_trading_date', today);
+          localStorage.setItem('cap_daily_start_equity', equity.toString());
+        }
       }
 
       // Checar se meta foi atingida
@@ -506,6 +539,7 @@ export default function App() {
         if (currentPnlPct >= dailyTargetPct) {
           setDailyTargetReached(true);
           setShowDailyTargetModal(true);
+          setIsRunning(false); // Pausa o motor automaticamente
           addLog(`🎯 META DIÁRIA ATINGIDA! Lucro de ${currentPnlPct.toFixed(2)}% (meta: ${dailyTargetPct}%)`, 'SUCCESS');
         }
       }

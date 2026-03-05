@@ -41,6 +41,8 @@ export interface StrategyProfile {
   leverage: number;
   capital: number;
   currentCapital: number; // Capital atual (capital + lucros - perdas)
+  allocatedCapital: number; // Capital preso em ordens abertas agora
+  marginPerTrade: number; // Quanto pode gastar por ordem (ex: 20 dol)
   pnl: number;
   trades: number;
   winRate: number;
@@ -139,6 +141,7 @@ export interface OrderRequest {
   stopLossPrice?: number;
   takeProfitPrice?: number;
   clientOrderId?: string; // New field for tracking strategy on exchange
+  marginUSD?: number; // Margem USD vinda do perfil (substitui $50 fixo)
 }
 
 export type LeverageOption = 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60 | 65 | 70 | 75 | 80 | 85 | 90 | 95 | 100;
