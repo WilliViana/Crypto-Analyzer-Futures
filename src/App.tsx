@@ -92,6 +92,8 @@ export default function App() {
     const saved = localStorage.getItem('cap_daily_stoploss');
     return saved ? parseFloat(saved) : 5;
   });
+  const [consecutiveLosses, setConsecutiveLosses] = useState(0);
+  const [circuitBreakerActive, setCircuitBreakerActive] = useState(false);
 
   const [allMarketPairs, setAllMarketPairs] = useState<any[]>([]);
   const [availableQuotes, setAvailableQuotes] = useState<string[]>([]);
@@ -559,6 +561,18 @@ export default function App() {
           setIsRunning(false);
           addLog(`🚨 STOP LOSS DIÁRIO ATIVADO! Perda de ${currentPnlPct.toFixed(2)}% (limite: -${dailyStopLossPct}%). Motor parado.`, 'ERROR');
         }
+
+        // Circuit Breaker (5 perdas consecutivas = pausa 30min)
+        if (consecutiveLosses >= 5 && !circuitBreakerActive) {
+          setCircuitBreakerActive(true);
+          setIsRunning(false);
+          addLog(`⚡ CIRCUIT BREAKER! 5 perdas consecutivas detectadas. Motor pausado por 30 minutos.`, 'ERROR');
+          setTimeout(() => {
+            setCircuitBreakerActive(false);
+            setConsecutiveLosses(0);
+            addLog(`✅ Circuit Breaker liberado. Motor pode ser reiniciado.`, 'INFO');
+          }, 30 * 60 * 1000);
+        }
       }
     }
   }, [exchanges, dailyStartBalance, dailyTargetPct, dailyTargetReached]);
@@ -591,6 +605,10 @@ export default function App() {
           setShowDailyTargetModal={setShowDailyTargetModal}
           onContinueDay={() => { setDailyTargetReached(false); setShowDailyTargetModal(false); }}
           onEndDay={() => { setIsRunning(false); setShowDailyTargetModal(false); }}
+          riskMode={riskMode}
+          dailyStopLossPct={dailyStopLossPct}
+          consecutiveLosses={consecutiveLosses}
+          circuitBreakerActive={circuitBreakerActive}
         />;
       case 'settings':
         return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;

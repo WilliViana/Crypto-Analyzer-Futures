@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory } from '../services/exchangeService';
@@ -22,6 +22,10 @@ interface DashboardOverviewProps {
     setShowDailyTargetModal?: (v: boolean) => void;
     onContinueDay?: () => void;
     onEndDay?: () => void;
+    riskMode?: string;
+    dailyStopLossPct?: number;
+    consecutiveLosses?: number;
+    circuitBreakerActive?: boolean;
 }
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -29,7 +33,8 @@ const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     lang, totalBalance, unrealizedPnL, assets, trades, profiles = [], exchanges = [], onRefresh,
     dailyTargetPct = 10, setDailyTargetPct, dailyStartBalance = 0, dailyTargetReached = false,
-    showDailyTargetModal = false, setShowDailyTargetModal, onContinueDay, onEndDay
+    showDailyTargetModal = false, setShowDailyTargetModal, onContinueDay, onEndDay,
+    riskMode = 'general', dailyStopLossPct = 5, consecutiveLosses = 0, circuitBreakerActive = false
 }) => {
     const [sessionHistory, setSessionHistory] = useState<{ time: string, value: number }[]>([]);
     const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT');
@@ -633,6 +638,53 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
             </div>
 
+            {/* Risk Mode Card */}
+            <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+                        <ShieldAlert size={14} className="text-amber-400" />
+                        Modo de Risco Ativo
+                    </h3>
+                    {circuitBreakerActive && (
+                        <span className="text-[8px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">CIRCUIT BREAKER</span>
+                    )}
+                </div>
+                <div className="flex items-center gap-3 mb-3">
+                    <div className={`p-2.5 rounded-lg ${riskMode === 'general' ? 'bg-indigo-500/20' :
+                            riskMode === 'profile' ? 'bg-purple-500/20' :
+                                'bg-red-500/20'
+                        }`}>
+                        {riskMode === 'general' ? <Globe2 size={20} className="text-indigo-400" /> :
+                            riskMode === 'profile' ? <Layers size={20} className="text-purple-400" /> :
+                                <Unlock size={20} className="text-red-400" />}
+                    </div>
+                    <div>
+                        <div className="text-sm font-bold text-white">
+                            {riskMode === 'general' ? 'Geral' : riskMode === 'profile' ? 'Por Perfil' : 'Livre'}
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                            {riskMode === 'free' ? 'Sem limites' : `Meta: +${dailyTargetPct}% | Stop: -${dailyStopLossPct}%`}
+                        </div>
+                    </div>
+                </div>
+                {riskMode !== 'free' && (
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-green-500/10 rounded-lg p-2 text-center">
+                            <div className="text-[8px] text-gray-500 uppercase">Meta</div>
+                            <div className="text-xs font-bold text-green-400">+{dailyTargetPct}%</div>
+                        </div>
+                        <div className="bg-red-500/10 rounded-lg p-2 text-center">
+                            <div className="text-[8px] text-gray-500 uppercase">Stop</div>
+                            <div className="text-xs font-bold text-red-400">-{dailyStopLossPct}%</div>
+                        </div>
+                        <div className={`rounded-lg p-2 text-center ${consecutiveLosses >= 3 ? 'bg-orange-500/10' : 'bg-white/5'}`}>
+                            <div className="text-[8px] text-gray-500 uppercase">Perdas</div>
+                            <div className={`text-xs font-bold ${consecutiveLosses >= 5 ? 'text-red-400' : consecutiveLosses >= 3 ? 'text-orange-400' : 'text-gray-400'}`}>{consecutiveLosses}/5</div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* Active Profiles with Capital */}
             <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
@@ -665,10 +717,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                 <div
                                     key={profile.id}
                                     className={`p-3 rounded-xl border transition-all relative ${isTop
-                                            ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
-                                            : profile.active
-                                                ? 'bg-green-500/5 border-green-500/20'
-                                                : 'bg-black/20 border-gray-700/50 opacity-60'
+                                        ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
+                                        : profile.active
+                                            ? 'bg-green-500/5 border-green-500/20'
+                                            : 'bg-black/20 border-gray-700/50 opacity-60'
                                         }`}
                                 >
                                     {isTop && (

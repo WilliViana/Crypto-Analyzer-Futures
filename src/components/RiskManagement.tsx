@@ -23,7 +23,8 @@ export default function RiskManagement({
     dailyStopLossPct, setDailyStopLossPct,
     profiles, setProfiles, lang
 }: RiskManagementProps) {
-    const [activeMode, setActiveMode] = useState<RiskMode>(riskMode);
+    const [selectedMode, setSelectedMode] = useState<RiskMode>(riskMode);
+    const isActivated = selectedMode === riskMode;
 
     const modes = [
         { id: 'general' as RiskMode, label: 'Geral', icon: Globe2, desc: 'Limites de ganho e perda para toda a plataforma', color: 'indigo' },
@@ -31,10 +32,9 @@ export default function RiskManagement({
         { id: 'free' as RiskMode, label: 'Livre', icon: Unlock, desc: 'Sem limites — a plataforma opera sem restrições', color: 'red' },
     ];
 
-    const handleModeChange = (mode: RiskMode) => {
-        setActiveMode(mode);
-        setRiskMode(mode);
-        localStorage.setItem('cap_risk_mode', mode);
+    const handleActivate = () => {
+        setRiskMode(selectedMode);
+        localStorage.setItem('cap_risk_mode', selectedMode);
     };
 
     const updateProfileRisk = (profileId: string, field: 'profileDailyTargetPct' | 'profileDailyStopLossPct', value: number) => {
@@ -59,33 +59,46 @@ export default function RiskManagement({
                     <div className="p-2 bg-amber-500/20 rounded-lg">
                         <ShieldAlert size={24} className="text-amber-400" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                         <h2 className="text-xl font-bold text-white uppercase tracking-tighter">Gestão de Riscos</h2>
-                        <p className="text-sm text-gray-500">Configure limites de ganho e perda diários para proteger seu capital.</p>
+                        <p className="text-sm text-gray-500">Selecione e ative um modo de risco para proteger seu capital.</p>
+                    </div>
+                    {/* Active badge */}
+                    <div className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${riskMode === 'general' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
+                        riskMode === 'profile' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                            'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}>
+                        <CheckCircle size={12} />
+                        Ativo: {riskMode === 'general' ? 'Geral' : riskMode === 'profile' ? 'Perfis' : 'Livre'}
                     </div>
                 </div>
             </div>
 
             {/* Mode Selector */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 {modes.map(mode => {
                     const Icon = mode.icon;
-                    const isActive = activeMode === mode.id;
+                    const isSelected = selectedMode === mode.id;
+                    const isCurrentlyActive = riskMode === mode.id;
                     return (
                         <button
                             key={mode.id}
-                            onClick={() => handleModeChange(mode.id)}
-                            className={`p-5 rounded-xl border-2 transition-all text-left group ${isActive
-                                    ? `border-${mode.color}-500 bg-${mode.color}-500/10 shadow-lg shadow-${mode.color}-500/10`
-                                    : 'border-card-border bg-surface hover:border-gray-600'
+                            onClick={() => setSelectedMode(mode.id)}
+                            className={`p-5 rounded-xl border-2 transition-all text-left group relative ${isSelected
+                                ? `border-${mode.color}-500 bg-${mode.color}-500/10 shadow-lg shadow-${mode.color}-500/10`
+                                : 'border-card-border bg-surface hover:border-gray-600'
                                 }`}
                         >
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className={`p-2 rounded-lg ${isActive ? `bg-${mode.color}-500/20` : 'bg-white/5'}`}>
-                                    <Icon size={20} className={isActive ? `text-${mode.color}-400` : 'text-gray-500'} />
+                            {isCurrentlyActive && (
+                                <div className="absolute top-2 right-2">
+                                    <span className="text-[7px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Ativo</span>
                                 </div>
-                                <span className={`text-sm font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-gray-400'}`}>{mode.label}</span>
-                                {isActive && <CheckCircle size={16} className="text-green-400 ml-auto" />}
+                            )}
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={`p-2 rounded-lg ${isSelected ? `bg-${mode.color}-500/20` : 'bg-white/5'}`}>
+                                    <Icon size={20} className={isSelected ? `text-${mode.color}-400` : 'text-gray-500'} />
+                                </div>
+                                <span className={`text-sm font-bold uppercase tracking-wider ${isSelected ? 'text-white' : 'text-gray-400'}`}>{mode.label}</span>
                             </div>
                             <p className="text-xs text-gray-500 leading-relaxed">{mode.desc}</p>
                         </button>
@@ -93,8 +106,21 @@ export default function RiskManagement({
                 })}
             </div>
 
+            {/* Activate Button */}
+            {!isActivated && (
+                <div className="mb-6 flex justify-center">
+                    <button
+                        onClick={handleActivate}
+                        className="px-8 py-3 bg-primary text-white rounded-xl font-bold uppercase text-sm shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center gap-2"
+                    >
+                        <CheckCircle size={16} />
+                        Ativar Modo "{selectedMode === 'general' ? 'Geral' : selectedMode === 'profile' ? 'Perfis' : 'Livre'}"
+                    </button>
+                </div>
+            )}
+
             {/* General Mode Config */}
-            {activeMode === 'general' && (
+            {selectedMode === 'general' && (
                 <div className="bg-surface border border-card-border rounded-xl p-6 space-y-6 animate-fade-in">
                     <div className="flex items-center gap-2 mb-4">
                         <Settings2 size={18} className="text-indigo-400" />
@@ -167,7 +193,7 @@ export default function RiskManagement({
             )}
 
             {/* Profile Mode Config */}
-            {activeMode === 'profile' && (
+            {selectedMode === 'profile' && (
                 <div className="space-y-4 animate-fade-in">
                     <div className="flex items-center gap-2 mb-2 bg-surface border border-card-border rounded-xl p-4">
                         <Layers size={18} className="text-purple-400" />
@@ -228,7 +254,7 @@ export default function RiskManagement({
             )}
 
             {/* Free Mode */}
-            {activeMode === 'free' && (
+            {selectedMode === 'free' && (
                 <div className="bg-surface border border-red-500/20 rounded-xl p-8 text-center animate-fade-in">
                     <div className="flex justify-center mb-4">
                         <div className="p-4 bg-red-500/10 rounded-full">
