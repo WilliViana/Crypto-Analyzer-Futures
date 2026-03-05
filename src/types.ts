@@ -55,6 +55,9 @@ export interface StrategyProfile {
   indicators: AdvancedIndicators;
   useDivergences: boolean;
   useCandlePatterns: boolean;
+  // Risk per profile (used in 'profile' risk mode)
+  profileDailyTargetPct?: number;
+  profileDailyStopLossPct?: number;
 }
 
 export interface MarketData {

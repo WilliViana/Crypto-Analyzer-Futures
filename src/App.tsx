@@ -10,7 +10,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminPanel from './components/AdminPanel';
 import TradeHistory from './components/TradeHistory';
 import OrderForm from './components/OrderForm';
-import Backtest from './components/Backtest';
+import RiskManagement, { RiskMode } from './components/RiskManagement';
 import DashboardOverview from './components/DashboardOverview';
 import StrategyModal from './components/StrategyModal';
 import SymbolSelector from './components/SymbolSelector';
@@ -83,6 +83,15 @@ export default function App() {
   });
   const [dailyTargetReached, setDailyTargetReached] = useState(false);
   const [showDailyTargetModal, setShowDailyTargetModal] = useState(false);
+
+  // Risk Management
+  const [riskMode, setRiskMode] = useState<RiskMode>(() => {
+    return (localStorage.getItem('cap_risk_mode') as RiskMode) || 'general';
+  });
+  const [dailyStopLossPct, setDailyStopLossPct] = useState<number>(() => {
+    const saved = localStorage.getItem('cap_daily_stoploss');
+    return saved ? parseFloat(saved) : 5;
+  });
 
   const [allMarketPairs, setAllMarketPairs] = useState<any[]>([]);
   const [availableQuotes, setAvailableQuotes] = useState<string[]>([]);
@@ -533,14 +542,22 @@ export default function App() {
         }
       }
 
-      // Checar se meta foi atingida
-      if (dailyStartBalance > 0 && !dailyTargetReached) {
+      // --- Verificação de Meta e Stop Loss (respeitando riskMode) ---
+      if (riskMode !== 'free' && dailyStartBalance > 0) {
         const currentPnlPct = ((data.totalBalance - dailyStartBalance) / dailyStartBalance) * 100;
-        if (currentPnlPct >= dailyTargetPct) {
+
+        // Meta de ganho
+        if (!dailyTargetReached && currentPnlPct >= dailyTargetPct) {
           setDailyTargetReached(true);
           setShowDailyTargetModal(true);
-          setIsRunning(false); // Pausa o motor automaticamente
+          setIsRunning(false);
           addLog(`🎯 META DIÁRIA ATINGIDA! Lucro de ${currentPnlPct.toFixed(2)}% (meta: ${dailyTargetPct}%)`, 'SUCCESS');
+        }
+
+        // Stop Loss diário
+        if (currentPnlPct <= -dailyStopLossPct) {
+          setIsRunning(false);
+          addLog(`🚨 STOP LOSS DIÁRIO ATIVADO! Perda de ${currentPnlPct.toFixed(2)}% (limite: -${dailyStopLossPct}%). Motor parado.`, 'ERROR');
         }
       }
     }
@@ -621,7 +638,7 @@ export default function App() {
       case 'logs': return <AuditLog logs={logs} />;
       case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
-      case 'backtest': return <Backtest profiles={profiles} lang={lang} />;
+      case 'risk': return <RiskManagement riskMode={riskMode} setRiskMode={setRiskMode} dailyTargetPct={dailyTargetPct} setDailyTargetPct={setDailyTargetPct} dailyStopLossPct={dailyStopLossPct} setDailyStopLossPct={setDailyStopLossPct} profiles={profiles} setProfiles={setProfiles} lang={lang} />;
       case 'admin': return <AdminPanel lang={lang} />;
       case 'profile': return <UserProfile lang={lang} />;
       case 'info': return <InformationTab lang={lang} />;

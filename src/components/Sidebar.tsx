@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, LineChart, Settings, Activity, FileText, Lock, Wallet, Layers, ShieldCheck, Mail, Hexagon, History, Info } from 'lucide-react';
+import { LayoutDashboard, LineChart, Settings, ShieldAlert, FileText, Lock, Wallet, Layers, ShieldCheck, Mail, Hexagon, History, Info } from 'lucide-react';
 import { Language } from '../types';
 import { translations } from '../utils/translations';
 
@@ -22,7 +22,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({ activeTab, setActiveTab, l
     { id: 'wallet', icon: Wallet, label: t.wallet },
     { id: 'history', icon: History, label: t.history },
     { id: 'analysis', icon: LineChart, label: t.analysis },
-    { id: 'backtest', icon: Activity, label: t.backtest },
+    { id: 'risk', icon: ShieldAlert, label: 'Gestão de Riscos' },
     { id: 'logs', icon: FileText, label: t.logs },
     { id: 'settings', icon: Settings, label: t.settings },
     { id: 'info', icon: Info, label: 'Info' },

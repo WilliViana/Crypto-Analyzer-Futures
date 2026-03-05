@@ -11,9 +11,12 @@ function fixPrecision(value: number, precision: number): string {
 }
 
 export async function callBinanceProxy(endpoint: string, method: string, params: any, exchange: Exchange) {
-  if (!exchange.apiKey || !exchange.apiSecret) throw new Error("Credenciais ausentes.");
-  const edgeFunctionUrl = `https://bhigvgfkttvjibvlyqpl.supabase.co/functions/v1/binance-proxy`;
-  const payload = { endpoint, method, params, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret, isTestnet: exchange.isTestnet } };
+  if (!exchange.apiKey) throw new Error("Credenciais ausentes.");
+
+  // Use unified proxy for all exchanges
+  const exchangeId = exchange.id || 'binance';
+  const edgeFunctionUrl = `https://bhigvgfkttvjibvlyqpl.supabase.co/functions/v1/exchange-proxy`;
+  const payload = { endpoint, method, params, exchangeId, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret || '', isTestnet: exchange.isTestnet } };
 
   const { data: { session } } = await supabase.auth.getSession();
   const targetHeaders: Record<string, string> = {
@@ -49,7 +52,7 @@ export async function callBinanceProxy(endpoint: string, method: string, params:
 
   const data = await response.json();
   if (data.code && data.code !== 200) {
-    throw new Error(`Binance: ${data.msg}`);
+    throw new Error(`${exchange.name || 'Exchange'}: ${data.msg || JSON.stringify(data)}`);
   }
   return data;
 }

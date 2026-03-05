@@ -643,47 +643,71 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <span className="text-[10px] text-gray-500">{activeProfiles.length} de {profiles.length} ativos</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {profiles.map(profile => {
-                        const currentCap = profile.currentCapital ?? profile.capital;
-                        const capitalDiff = currentCap - profile.capital;
-                        const capitalPct = profile.capital > 0 ? ((capitalDiff / profile.capital) * 100) : 0;
-                        const isUp = capitalDiff >= 0;
-                        return (
-                            <div
-                                key={profile.id}
-                                className={`p-3 rounded-xl border transition-all ${profile.active
-                                    ? 'bg-green-500/5 border-green-500/20'
-                                    : 'bg-black/20 border-gray-700/50 opacity-60'
-                                    }`}
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${profile.active ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
-                                        <span className={`text-xs font-bold ${profile.active ? 'text-white' : 'text-gray-500'}`}>{profile.name}</span>
+                    {(() => {
+                        // Calculate top performer
+                        const topProfile = profiles
+                            .filter(p => p.active)
+                            .reduce((best, p) => {
+                                const diff = (p.currentCapital ?? p.capital) - p.capital;
+                                const bestDiff = best ? ((best.currentCapital ?? best.capital) - best.capital) : -Infinity;
+                                return diff > bestDiff ? p : best;
+                            }, null as typeof profiles[0] | null);
+                        const topId = topProfile?.id;
+
+                        return profiles.map(profile => {
+                            const currentCap = profile.currentCapital ?? profile.capital;
+                            const capitalDiff = currentCap - profile.capital;
+                            const capitalPct = profile.capital > 0 ? ((capitalDiff / profile.capital) * 100) : 0;
+                            const isUp = capitalDiff >= 0;
+                            const isTop = profile.id === topId && profile.active && capitalDiff > 0;
+
+                            return (
+                                <div
+                                    key={profile.id}
+                                    className={`p-3 rounded-xl border transition-all relative ${isTop
+                                            ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
+                                            : profile.active
+                                                ? 'bg-green-500/5 border-green-500/20'
+                                                : 'bg-black/20 border-gray-700/50 opacity-60'
+                                        }`}
+                                >
+                                    {isTop && (
+                                        <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">
+                                            🏆 Top
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2 h-2 rounded-full ${profile.active ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
+                                            <span className={`text-xs font-bold ${isTop ? 'text-yellow-300' : profile.active ? 'text-white' : 'text-gray-500'}`}>{profile.name}</span>
+                                        </div>
+                                        <span className="text-[9px] text-gray-500 bg-black/30 px-2 py-0.5 rounded">{profile.leverage}x</span>
                                     </div>
-                                    <span className="text-[9px] text-gray-500 bg-black/30 px-2 py-0.5 rounded">{profile.leverage}x</span>
-                                </div>
-                                <div className="flex items-end justify-between">
-                                    <div>
-                                        <div className="text-[9px] text-gray-500 uppercase">Capital</div>
-                                        <div className="text-sm font-mono font-bold text-white">${currentCap.toFixed(2)}</div>
+                                    <div className="flex items-end justify-between">
+                                        <div>
+                                            <div className="text-[9px] text-gray-500 uppercase">Capital</div>
+                                            <div className={`text-sm font-mono font-bold ${isTop ? 'text-yellow-300' : 'text-white'}`}>${currentCap.toFixed(2)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`text-[10px] font-mono font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                                                {isUp ? '+' : ''}{capitalPct.toFixed(1)}%
+                                            </span>
+                                            {(profile.allocatedCapital || 0) > 0 && (
+                                                <div className="text-[8px] text-amber-400 mt-0.5">Em uso: ${(profile.allocatedCapital || 0).toFixed(0)}</div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                        <span className={`text-[10px] font-mono font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                                            {isUp ? '+' : ''}{capitalPct.toFixed(1)}%
-                                        </span>
+                                    {/* Mini progress bar */}
+                                    <div className="w-full bg-black/30 rounded-full h-1 mt-2 overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full ${isTop ? 'bg-yellow-500' : isUp ? 'bg-green-500' : 'bg-red-500'}`}
+                                            style={{ width: `${Math.min(100, Math.max(5, (currentCap / Math.max(profile.capital, 1)) * 50))}%` }}
+                                        />
                                     </div>
                                 </div>
-                                {/* Mini progress bar */}
-                                <div className="w-full bg-black/30 rounded-full h-1 mt-2 overflow-hidden">
-                                    <div
-                                        className={`h-full rounded-full ${isUp ? 'bg-green-500' : 'bg-red-500'}`}
-                                        style={{ width: `${Math.min(100, Math.max(5, (currentCap / Math.max(profile.capital, 1)) * 50))}%` }}
-                                    />
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        });
+                    })()}
                 </div>
             </div>
 
