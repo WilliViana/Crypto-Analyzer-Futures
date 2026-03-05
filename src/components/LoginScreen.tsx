@@ -200,16 +200,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, lang, setLang }) => 
                         </button>
                     </form>
 
-                    {/* Demo Access Button */}
-                    {mode === 'login' && (
-                        <button
-                            type="button"
-                            onClick={() => onLogin()}
-                            className="w-full mt-4 bg-transparent border border-white/10 text-gray-400 hover:text-white py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:bg-white/5"
-                        >
-                            Acesso Demonstração (Sem Login)
-                        </button>
-                    )}
+
+
 
                     <div className="mt-10 text-center text-xs text-gray-500 uppercase font-black tracking-[0.2em]">
                         {mode === 'login' ? (
