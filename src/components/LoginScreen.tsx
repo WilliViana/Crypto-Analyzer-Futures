@@ -153,13 +153,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, lang, setLang }) => 
                                         <input id="fullName" type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="Seu nome" required />
                                     </div>
                                 </div>
-                                <div>
-                                    <label htmlFor="adminCode" className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Código Admin (Opcional)</label>
-                                    <div className="relative group">
-                                        <Hexagon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
-                                        <input id="adminCode" type="text" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} className="w-full bg-[#151A25] border border-card-border rounded-xl py-3.5 pl-12 pr-4 text-white focus:border-primary outline-none transition-all" placeholder="Código de Convite" />
-                                    </div>
-                                </div>
                             </div>
                         )}
 
