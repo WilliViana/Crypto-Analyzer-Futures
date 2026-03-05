@@ -1,5 +1,5 @@
 import { OrderRequest, Exchange, Trade, RealAccountData } from '../types';
-import { SUPABASE_URL, supabase } from './supabaseClient';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabaseClient';
 import { addAuditLog, AUDIT_ACTIONS } from './auditService';
 
 function fixPrecision(value: number, precision: number): string {
@@ -16,10 +16,13 @@ export async function callBinanceProxy(endpoint: string, method: string, params:
   const payload = { endpoint, method, params, credentials: { apiKey: exchange.apiKey, apiSecret: exchange.apiSecret, isTestnet: exchange.isTestnet } };
 
   const { data: { session } } = await supabase.auth.getSession();
-  const targetHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (session?.access_token) {
-    targetHeaders['Authorization'] = `Bearer ${session.access_token}`;
-  }
+  const targetHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': session?.access_token
+      ? `Bearer ${session.access_token}`
+      : `Bearer ${SUPABASE_ANON_KEY}`,
+  };
 
   // In production: use Vercel proxy to bypass ISP/WAF block
   const isDev = (import.meta as any).env?.DEV === true;
