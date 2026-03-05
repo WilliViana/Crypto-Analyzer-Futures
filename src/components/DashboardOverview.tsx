@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory } from '../services/exchangeService';
@@ -14,12 +14,22 @@ interface DashboardOverviewProps {
     profiles?: StrategyProfile[];
     exchanges?: Exchange[];
     onRefresh?: () => void;
+    dailyTargetPct?: number;
+    setDailyTargetPct?: (v: number) => void;
+    dailyStartBalance?: number;
+    dailyTargetReached?: boolean;
+    showDailyTargetModal?: boolean;
+    setShowDailyTargetModal?: (v: boolean) => void;
+    onContinueDay?: () => void;
+    onEndDay?: () => void;
 }
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
-    lang, totalBalance, unrealizedPnL, assets, trades, profiles = [], exchanges = [], onRefresh
+    lang, totalBalance, unrealizedPnL, assets, trades, profiles = [], exchanges = [], onRefresh,
+    dailyTargetPct = 10, setDailyTargetPct, dailyStartBalance = 0, dailyTargetReached = false,
+    showDailyTargetModal = false, setShowDailyTargetModal, onContinueDay, onEndDay
 }) => {
     const [sessionHistory, setSessionHistory] = useState<{ time: string, value: number }[]>([]);
     const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT');
@@ -300,20 +310,39 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         const tpPrice = side === 'LONG' ? entryPrice * (1 + tpPct / 100) : entryPrice * (1 - tpPct / 100);
         const slPrice = side === 'LONG' ? entryPrice * (1 - slPct / 100) : entryPrice * (1 + slPct / 100);
 
-        // Fetch live price
+        // Fetch live price with fallback URLs
         useEffect(() => {
             setLivePrice(null);
+            const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+            const isTestnet = activeExchange?.isTestnet;
+            const urls = isTestnet
+                ? ['https://testnet.binancefuture.com/fapi/v1/ticker/price']
+                : [
+                    'https://fapi.binance.com/fapi/v1/ticker/price',
+                    'https://fapi1.binance.com/fapi/v1/ticker/price',
+                    'https://fapi2.binance.com/fapi/v1/ticker/price',
+                    'https://fapi3.binance.com/fapi/v1/ticker/price',
+                ];
+            let workingUrl = urls[0];
+
             const fetchLive = async () => {
-                try {
-                    const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${asset.symbol}`);
-                    const data = await res.json();
-                    setLivePrice(parseFloat(data.price));
-                } catch { }
+                for (const url of [workingUrl, ...urls.filter(u => u !== workingUrl)]) {
+                    try {
+                        const res = await fetch(`${url}?symbol=${asset.symbol}`);
+                        if (!res.ok) continue;
+                        const data = await res.json();
+                        if (data.price) {
+                            setLivePrice(parseFloat(data.price));
+                            workingUrl = url; // cache working URL
+                            return;
+                        }
+                    } catch { /* try next */ }
+                }
             };
             fetchLive();
-            const iv = setInterval(fetchLive, 3000);
+            const iv = setInterval(fetchLive, 4000);
             return () => clearInterval(iv);
-        }, [asset.symbol]);
+        }, [asset.symbol, exchanges]);
 
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
@@ -442,6 +471,36 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
             )}
 
+            {/* Daily Target Reached Modal */}
+            {showDailyTargetModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-[#151A25] border border-green-500/30 rounded-2xl p-8 max-w-md shadow-2xl text-center">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-green-500/20 rounded-full flex items-center justify-center">
+                            <Trophy size={32} className="text-green-400" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2">🎯 Meta Diária Atingida!</h3>
+                        <p className="text-gray-400 mb-2">Lucro de <span className="text-green-400 font-bold">{dailyTargetPct}%</span> alcançado.</p>
+                        <p className="text-gray-500 text-sm mb-6">Saldo inicial: ${dailyStartBalance.toFixed(2)} → Atual: ${totalBalance.toFixed(2)}</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onContinueDay}
+                                className="flex-1 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <PlayCircle size={18} />
+                                Buscar mais {dailyTargetPct}%
+                            </button>
+                            <button
+                                onClick={onEndDay}
+                                className="flex-1 py-3 bg-red-600/80 hover:bg-red-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <StopCircle size={18} />
+                                Finalizar o Dia
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {selectedOrder && <OrderModal asset={selectedOrder} onClose={() => setSelectedOrder(null)} />}
 
             {/* TradingView Chart (Optional) */}
@@ -504,7 +563,77 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
             </div>
 
-            {/* Active Profiles Indicator */}
+            {/* Meta Diária + Capital por Perfil */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Meta Diária Card */}
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+                            <Crosshair size={14} className="text-yellow-400" />
+                            Meta Diária de Ganho
+                        </h3>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={dailyTargetPct}
+                                onChange={e => setDailyTargetPct?.(Math.max(1, Math.min(100, Number(e.target.value))))}
+                                aria-label="Meta diária de ganho em porcentagem"
+                                className="w-16 bg-black/30 border border-gray-600 rounded px-2 py-1 text-white text-xs font-mono text-center"
+                            />
+                            <span className="text-gray-500 text-xs">%</span>
+                        </div>
+                    </div>
+                    {(() => {
+                        const currentPnlPct = dailyStartBalance > 0 ? ((totalBalance - dailyStartBalance) / dailyStartBalance) * 100 : 0;
+                        const progressPct = Math.min((currentPnlPct / dailyTargetPct) * 100, 100);
+                        const pnlAmount = totalBalance - dailyStartBalance;
+                        const isPos = pnlAmount >= 0;
+                        return (
+                            <div>
+                                <div className="flex justify-between text-xs mb-2">
+                                    <span className="text-gray-500">Progresso: <span className={isPos ? 'text-green-400' : 'text-red-400'}>{currentPnlPct.toFixed(2)}%</span> / {dailyTargetPct}%</span>
+                                    <span className={`font-mono font-bold ${isPos ? 'text-green-400' : 'text-red-400'}`}>{isPos ? '+' : ''}${pnlAmount.toFixed(2)}</span>
+                                </div>
+                                <div className="w-full bg-black/30 rounded-full h-3 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${dailyTargetReached ? 'bg-gradient-to-r from-green-500 to-emerald-400' : isPos ? 'bg-gradient-to-r from-primary to-cyan_brand' : 'bg-red-500'}`}
+                                        style={{ width: `${Math.max(0, Math.min(progressPct, 100))}%` }}
+                                    />
+                                </div>
+                                {dailyTargetReached && (
+                                    <div className="mt-2 text-xs text-green-400 font-bold flex items-center gap-1">
+                                        <Trophy size={12} /> Meta atingida!
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
+
+                {/* Saldo Inicial do Dia */}
+                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+                            <DollarSign size={14} className="text-cyan-400" />
+                            Saldo do Dia
+                        </h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <div className="text-[10px] text-gray-500 uppercase mb-1">Início</div>
+                            <div className="text-lg font-mono font-bold text-white">${dailyStartBalance.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-gray-500 uppercase mb-1">Atual</div>
+                            <div className="text-lg font-mono font-bold text-white">${totalBalance.toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Active Profiles with Capital */}
             <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -513,19 +642,48 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     </h3>
                     <span className="text-[10px] text-gray-500">{activeProfiles.length} de {profiles.length} ativos</span>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    {profiles.map(profile => (
-                        <div
-                            key={profile.id}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${profile.active
-                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                : 'bg-black/20 border-gray-700 text-gray-600'
-                                }`}
-                        >
-                            <div className={`w-2 h-2 rounded-full ${profile.active ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
-                            {profile.name}
-                        </div>
-                    ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {profiles.map(profile => {
+                        const currentCap = profile.currentCapital ?? profile.capital;
+                        const capitalDiff = currentCap - profile.capital;
+                        const capitalPct = profile.capital > 0 ? ((capitalDiff / profile.capital) * 100) : 0;
+                        const isUp = capitalDiff >= 0;
+                        return (
+                            <div
+                                key={profile.id}
+                                className={`p-3 rounded-xl border transition-all ${profile.active
+                                    ? 'bg-green-500/5 border-green-500/20'
+                                    : 'bg-black/20 border-gray-700/50 opacity-60'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${profile.active ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
+                                        <span className={`text-xs font-bold ${profile.active ? 'text-white' : 'text-gray-500'}`}>{profile.name}</span>
+                                    </div>
+                                    <span className="text-[9px] text-gray-500 bg-black/30 px-2 py-0.5 rounded">{profile.leverage}x</span>
+                                </div>
+                                <div className="flex items-end justify-between">
+                                    <div>
+                                        <div className="text-[9px] text-gray-500 uppercase">Capital</div>
+                                        <div className="text-sm font-mono font-bold text-white">${currentCap.toFixed(2)}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className={`text-[10px] font-mono font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                                            {isUp ? '+' : ''}{capitalPct.toFixed(1)}%
+                                        </span>
+                                    </div>
+                                </div>
+                                {/* Mini progress bar */}
+                                <div className="w-full bg-black/30 rounded-full h-1 mt-2 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full ${isUp ? 'bg-green-500' : 'bg-red-500'}`}
+                                        style={{ width: `${Math.min(100, Math.max(5, (currentCap / Math.max(profile.capital, 1)) * 50))}%` }}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 

@@ -41,11 +41,11 @@ const DEFAULT_INDICATORS: AdvancedIndicators = {
 };
 
 const INITIAL_PROFILES_BASE: StrategyProfile[] = [
-  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false },
-  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false },
-  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false },
+  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false },
+  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
 ];
 
 export default function App() {
@@ -65,6 +65,15 @@ export default function App() {
   const [realPortfolio, setRealPortfolio] = useState<RealAccountData>({ totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [editingProfile, setEditingProfile] = useState<StrategyProfile | null>(null);
+
+  // Meta diária de ganho
+  const [dailyTargetPct, setDailyTargetPct] = useState<number>(() => {
+    const saved = localStorage.getItem('cap_daily_target');
+    return saved ? parseFloat(saved) : 10;
+  });
+  const [dailyStartBalance, setDailyStartBalance] = useState<number>(0);
+  const [dailyTargetReached, setDailyTargetReached] = useState(false);
+  const [showDailyTargetModal, setShowDailyTargetModal] = useState(false);
 
   const [allMarketPairs, setAllMarketPairs] = useState<any[]>([]);
   const [availableQuotes, setAvailableQuotes] = useState<string[]>([]);
@@ -391,6 +400,20 @@ export default function App() {
                 break; // Break entire loop - no point checking more symbols
               }
 
+              // Check capital limit per profile
+              const profileCapital = currentProfile.currentCapital || currentProfile.capital;
+              const marginNeeded = profileCapital / currentProfile.leverage; // Approx margin
+              if (marginNeeded > profileCapital) {
+                addLog(`SKIP [${currentProfile.name}]: Capital insuficiente ($${profileCapital.toFixed(2)} disponível para perfil)`, 'WARNING');
+                continue;
+              }
+
+              // Check daily target
+              if (dailyTargetReached) {
+                addLog(`SKIP: Meta diária de ${dailyTargetPct}% atingida. Motor pausado.`, 'WARNING');
+                break;
+              }
+
               const side = analysis.signal;
               const reasons = analysis.details.join(', ');
               addLog(`GATILHO [${currentProfile.name}]: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
@@ -471,8 +494,23 @@ export default function App() {
         strategyName: profileMapRef.current[a.symbol] || a.strategyName
       }));
       setRealPortfolio({ ...data, assets: assetsWithProfile });
+
+      // Verificar meta diária - setar saldo inicial do dia
+      if (dailyStartBalance === 0 && data.totalBalance > 0) {
+        setDailyStartBalance(data.totalBalance);
+      }
+
+      // Checar se meta foi atingida
+      if (dailyStartBalance > 0 && !dailyTargetReached) {
+        const currentPnlPct = ((data.totalBalance - dailyStartBalance) / dailyStartBalance) * 100;
+        if (currentPnlPct >= dailyTargetPct) {
+          setDailyTargetReached(true);
+          setShowDailyTargetModal(true);
+          addLog(`🎯 META DIÁRIA ATINGIDA! Lucro de ${currentPnlPct.toFixed(2)}% (meta: ${dailyTargetPct}%)`, 'SUCCESS');
+        }
+      }
     }
-  }, [exchanges]);
+  }, [exchanges, dailyStartBalance, dailyTargetPct, dailyTargetReached]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -485,7 +523,24 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardOverview lang={lang} totalBalance={realPortfolio.totalBalance} unrealizedPnL={realPortfolio.unrealizedPnL} assets={realPortfolio.assets} trades={trades} profiles={profiles} exchanges={exchanges} onRefresh={fetchRealData} />;
+        return <DashboardOverview
+          lang={lang}
+          totalBalance={realPortfolio.totalBalance}
+          unrealizedPnL={realPortfolio.unrealizedPnL}
+          assets={realPortfolio.assets}
+          trades={trades}
+          profiles={profiles}
+          exchanges={exchanges}
+          onRefresh={fetchRealData}
+          dailyTargetPct={dailyTargetPct}
+          setDailyTargetPct={(v: number) => { setDailyTargetPct(v); localStorage.setItem('cap_daily_target', String(v)); }}
+          dailyStartBalance={dailyStartBalance}
+          dailyTargetReached={dailyTargetReached}
+          showDailyTargetModal={showDailyTargetModal}
+          setShowDailyTargetModal={setShowDailyTargetModal}
+          onContinueDay={() => { setDailyTargetReached(false); setShowDailyTargetModal(false); }}
+          onEndDay={() => { setIsRunning(false); setShowDailyTargetModal(false); }}
+        />;
       case 'settings':
         return <ExchangeManager exchanges={exchanges} setExchanges={setExchanges} lang={lang} addLog={addLog} />;
       case 'strategies':

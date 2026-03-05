@@ -40,6 +40,7 @@ export interface StrategyProfile {
   confidenceThreshold: number; // Global threshold (e.g. 80%) to trigger trade
   leverage: number;
   capital: number;
+  currentCapital: number; // Capital atual (capital + lucros - perdas)
   pnl: number;
   trades: number;
   winRate: number;
