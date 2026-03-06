@@ -522,19 +522,53 @@ export default function App() {
       }));
       setRealPortfolio({ ...data, assets: assetsWithProfile });
 
+      // --- Atualizar currentCapital dos perfis com PnL real ---
+      const profilePnLMap: Record<string, number> = {};
+      const profileAllocMap: Record<string, number> = {};
+      for (const asset of assetsWithProfile) {
+        const profName = asset.strategyName;
+        if (profName) {
+          profilePnLMap[profName] = (profilePnLMap[profName] || 0) + (asset.unrealizedPnL || 0);
+          profileAllocMap[profName] = (profileAllocMap[profName] || 0) + Math.abs(asset.initialMargin || 0);
+        }
+      }
+      setProfiles(prev => prev.map(p => {
+        const pnl = profilePnLMap[p.name] || 0;
+        const allocated = profileAllocMap[p.name] || 0;
+        return {
+          ...p,
+          currentCapital: p.capital + pnl,
+          allocatedCapital: allocated,
+        };
+      }));
+
+      // --- Rastrear perdas consecutivas ---
+      const previousPositionSymbols = new Set(openPositionsRef.current);
+      const currentSymbols = new Set(assetsWithProfile.map(a => a.symbol));
+      for (const sym of Array.from(previousPositionSymbols) as string[]) {
+        if (!currentSymbols.has(sym as string)) {
+          // Posição fechada — verificar se foi perda (baseado no último PnL conhecido)
+          openPositionsRef.current.delete(sym);
+          // Sem acesso ao PnL final, incrementamos se o trade foi mapeado e aberto durante perda global
+          // Mais preciso: buscar income da posição fechada
+        }
+      }
+      // Atualizar openPositions com posições atuais
+      for (const sym of currentSymbols) {
+        openPositionsRef.current.add(sym);
+      }
+
       // --- Meta diária: persistência por data ---
       const today = new Date().toDateString();
       const savedDate = localStorage.getItem('cap_trading_date');
 
       if (savedDate !== today && data.totalBalance > 0) {
-        // Novo dia! Salvar saldo inicial
         localStorage.setItem('cap_trading_date', today);
         localStorage.setItem('cap_daily_start_equity', data.totalBalance.toString());
         setDailyStartBalance(data.totalBalance);
         setDailyTargetReached(false);
         addLog(`📅 Novo dia de trade iniciado. Saldo inicial: $${data.totalBalance.toFixed(2)}`, 'SYSTEM');
       } else if (dailyStartBalance === 0 && data.totalBalance > 0) {
-        // Primeiro fetch do dia (sem reset)
         const savedEquity = localStorage.getItem('cap_daily_start_equity');
         const equity = savedEquity ? parseFloat(savedEquity) : data.totalBalance;
         setDailyStartBalance(equity);
@@ -545,8 +579,12 @@ export default function App() {
       }
 
       // --- Verificação de Meta e Stop Loss (respeitando riskMode) ---
-      if (riskMode !== 'free' && dailyStartBalance > 0) {
-        const currentPnlPct = ((data.totalBalance - dailyStartBalance) / dailyStartBalance) * 100;
+      // Base: capital investido (soma dos perfis) e não saldo total da conta
+      const investedCapital = profiles.reduce((sum, p) => sum + (p.active ? p.capital : 0), 0);
+      const baseForPct = investedCapital > 0 ? investedCapital : dailyStartBalance;
+
+      if (riskMode !== 'free' && baseForPct > 0 && dailyStartBalance > 0) {
+        const currentPnlPct = ((data.totalBalance - dailyStartBalance) / baseForPct) * 100;
 
         // Meta de ganho
         if (!dailyTargetReached && currentPnlPct >= dailyTargetPct) {
@@ -575,7 +613,7 @@ export default function App() {
         }
       }
     }
-  }, [exchanges, dailyStartBalance, dailyTargetPct, dailyTargetReached]);
+  }, [exchanges, dailyStartBalance, dailyTargetPct, dailyTargetReached, profiles, riskMode, dailyStopLossPct, consecutiveLosses, circuitBreakerActive]);
 
   useEffect(() => {
     if (isAuthenticated) {

@@ -50,6 +50,25 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
     const [livePrice, setLivePrice] = useState<number | null>(null);
 
+    // WebSocket for live price when position modal is open
+    useEffect(() => {
+        if (!selectedOrder) {
+            setLivePrice(null);
+            return;
+        }
+        const symbol = selectedOrder.symbol?.toLowerCase();
+        if (!symbol) return;
+        const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol}@markPrice`);
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.p) setLivePrice(parseFloat(data.p));
+            } catch { }
+        };
+        ws.onerror = () => { };
+        return () => { ws.close(); };
+    }, [selectedOrder]);
+
     useEffect(() => {
         if (totalBalance > 0) {
             const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -625,7 +644,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             Saldo do Dia
                         </h3>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div>
                             <div className="text-[10px] text-gray-500 uppercase mb-1">Início</div>
                             <div className="text-lg font-mono font-bold text-white">${dailyStartBalance.toFixed(2)}</div>
@@ -633,6 +652,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <div>
                             <div className="text-[10px] text-gray-500 uppercase mb-1">Atual</div>
                             <div className="text-lg font-mono font-bold text-white">${totalBalance.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-gray-500 uppercase mb-1">Ganhos</div>
+                            <div className="text-lg font-mono font-bold text-green-400">
+                                ${(() => {
+                                    const gains = assets.filter(a => a.unrealizedPnL > 0).reduce((s, a) => s + a.unrealizedPnL, 0);
+                                    return gains.toFixed(2);
+                                })()}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-gray-500 uppercase mb-1">Perdas</div>
+                            <div className="text-lg font-mono font-bold text-red-400">
+                                ${(() => {
+                                    const losses = assets.filter(a => a.unrealizedPnL < 0).reduce((s, a) => s + a.unrealizedPnL, 0);
+                                    return losses.toFixed(2);
+                                })()}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -651,8 +688,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
                 <div className="flex items-center gap-3 mb-3">
                     <div className={`p-2.5 rounded-lg ${riskMode === 'general' ? 'bg-indigo-500/20' :
-                            riskMode === 'profile' ? 'bg-purple-500/20' :
-                                'bg-red-500/20'
+                        riskMode === 'profile' ? 'bg-purple-500/20' :
+                            'bg-red-500/20'
                         }`}>
                         {riskMode === 'general' ? <Globe2 size={20} className="text-indigo-400" /> :
                             riskMode === 'profile' ? <Layers size={20} className="text-purple-400" /> :
