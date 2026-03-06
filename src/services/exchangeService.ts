@@ -195,27 +195,25 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
       }
 
       if (order.stopLossPrice) {
-        tpSlOrders.push({
+        const slParams: any = {
           ...commonParams,
           type: 'STOP_MARKET',
           stopPrice: fixPrecision(order.stopLossPrice, pricePrecision),
-          closePosition: 'true',
-        });
-        // Remove quantity and reduceOnly when using closePosition
-        delete tpSlOrders[tpSlOrders.length - 1].quantity;
-        delete tpSlOrders[tpSlOrders.length - 1].reduceOnly;
+          quantity: fixPrecision(finalQty, qtyPrecision),
+        };
+        if (positionSide === 'BOTH') slParams.reduceOnly = 'true';
+        tpSlOrders.push(slParams);
       }
 
       if (order.takeProfitPrice) {
-        tpSlOrders.push({
+        const tpParams: any = {
           ...commonParams,
           type: 'TAKE_PROFIT_MARKET',
           stopPrice: fixPrecision(order.takeProfitPrice, pricePrecision),
-          closePosition: 'true',
-        });
-        // Remove quantity and reduceOnly when using closePosition
-        delete tpSlOrders[tpSlOrders.length - 1].quantity;
-        delete tpSlOrders[tpSlOrders.length - 1].reduceOnly;
+          quantity: fixPrecision(finalQty, qtyPrecision),
+        };
+        if (positionSide === 'BOTH') tpParams.reduceOnly = 'true';
+        tpSlOrders.push(tpParams);
       }
 
       // Execute TP/SL orders sequentially
@@ -224,17 +222,16 @@ export const executeOrder = async (order: OrderRequest, exchange: Exchange | und
           await callBinanceProxy('/fapi/v1/order', 'POST', o, exchange);
           console.log(`[TP/SL] ✅ Placed ${o.type} at ${o.stopPrice}`);
         } catch (err: any) {
-          console.warn(`[TP/SL] First attempt failed for ${o.type}, trying without closePosition...`);
+          console.warn(`[TP/SL] reduceOnly failed for ${o.type}, trying closePosition...`);
           try {
-            // Fallback: use quantity + reduceOnly instead of closePosition
+            // Fallback: use closePosition instead
             const fallback = { ...o };
-            delete fallback.closePosition;
-            fallback.quantity = fixPrecision(finalQty, qtyPrecision);
-            if (positionSide === 'BOTH') fallback.reduceOnly = 'true';
+            delete fallback.quantity;
+            delete fallback.reduceOnly;
+            fallback.closePosition = 'true';
             await callBinanceProxy('/fapi/v1/order', 'POST', fallback, exchange);
-            console.log(`[TP/SL] ✅ Placed ${o.type} (fallback) at ${o.stopPrice}`);
+            console.log(`[TP/SL] ✅ Placed ${o.type} (closePosition fallback) at ${o.stopPrice}`);
           } catch (err2: any) {
-            // Only log to audit if it's NOT a known testnet limitation (-4120)
             if (err2.message?.includes('-4120')) {
               console.warn(`[TP/SL] Testnet does not support ${o.type} — skipped.`);
             } else {

@@ -25,12 +25,12 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
     const [activeTab, setActiveTab] = useState<'risk' | 'indicators' | 'advanced'>('risk');
 
     useEffect(() => {
-        if (!formData.indicators) {
+        if (!formData.indicators || Object.keys(formData.indicators).length === 0) {
             setFormData(prev => ({
                 ...prev,
                 indicators: DEFAULT_ADVANCED_INDICATORS,
-                useDivergences: true,
-                useCandlePatterns: false
+                useDivergences: prev.useDivergences ?? true,
+                useCandlePatterns: prev.useCandlePatterns ?? false
             }));
         }
     }, []);

@@ -421,7 +421,12 @@ export default function App() {
               }
 
               // --- ENVELOPE DE CAPITAL: verifica saldo livre do perfil ---
-              const freeCapital = (currentProfile.currentCapital || currentProfile.capital) - (currentProfile.allocatedCapital || 0);
+              const profileCurrentCapital = currentProfile.currentCapital ?? currentProfile.capital;
+              if (profileCurrentCapital <= 0) {
+                addLog(`SKIP [${currentProfile.name}]: Capital zerado ($${profileCurrentCapital.toFixed(2)}). Perfil desativado automaticamente.`, 'WARNING');
+                continue;
+              }
+              const freeCapital = profileCurrentCapital - (currentProfile.allocatedCapital || 0);
               const marginRequired = currentProfile.marginPerTrade || 20;
               if (freeCapital < marginRequired) {
                 addLog(`SKIP [${currentProfile.name}]: Saldo insuficiente. Livre: $${freeCapital.toFixed(2)} | Necessário: $${marginRequired}`, 'WARNING');
@@ -537,7 +542,7 @@ export default function App() {
         const allocated = profileAllocMap[p.name] || 0;
         return {
           ...p,
-          currentCapital: p.capital + pnl,
+          currentCapital: Math.max(0, p.capital + pnl),
           allocatedCapital: allocated,
         };
       }));
