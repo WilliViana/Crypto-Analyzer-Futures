@@ -58,15 +58,41 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         }
         const symbol = selectedOrder.symbol?.toLowerCase();
         if (!symbol) return;
-        const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol}@markPrice`);
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.p) setLivePrice(parseFloat(data.p));
-            } catch { }
+
+        // Detect if testnet from exchange
+        const activeExchange = exchanges?.find((e: any) => e.status === 'CONNECTED');
+        const isTestnet = activeExchange?.isTestnet;
+        const wsBase = isTestnet
+            ? 'wss://fstream.binancefuture.com/ws'
+            : 'wss://fstream.binance.com/ws';
+
+        let ws: WebSocket | null = null;
+        try {
+            ws = new WebSocket(`${wsBase}/${symbol}@markPrice`);
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.p) setLivePrice(parseFloat(data.p));
+                } catch { }
+            };
+            ws.onerror = () => { };
+        } catch { }
+
+        // Fallback: REST API after 3s if WS doesn't connect
+        const fallbackTimer = setTimeout(async () => {
+            if (!livePrice && activeExchange) {
+                try {
+                    const { callBinanceProxy } = await import('../services/exchangeService');
+                    const ticker = await callBinanceProxy('/fapi/v1/ticker/price', 'GET', { symbol: selectedOrder.symbol }, activeExchange);
+                    if (ticker?.price) setLivePrice(parseFloat(ticker.price));
+                } catch { }
+            }
+        }, 3000);
+
+        return () => {
+            clearTimeout(fallbackTimer);
+            ws?.close();
         };
-        ws.onerror = () => { };
-        return () => { ws.close(); };
     }, [selectedOrder]);
 
     useEffect(() => {

@@ -591,8 +591,8 @@ export default function App() {
       if (riskMode !== 'free' && baseForPct > 0 && dailyStartBalance > 0) {
         const currentPnlPct = ((data.totalBalance - dailyStartBalance) / baseForPct) * 100;
 
-        // Meta de ganho
-        if (!dailyTargetReached && currentPnlPct >= dailyTargetPct) {
+        // Meta de ganho (opcional: só se dailyTargetPct > 0)
+        if (dailyTargetPct > 0 && !dailyTargetReached && currentPnlPct >= dailyTargetPct) {
           setDailyTargetReached(true);
           setShowDailyTargetModal(true);
           setIsRunning(false);

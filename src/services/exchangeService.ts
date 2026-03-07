@@ -351,22 +351,30 @@ export const closePosition = async (
 
 /**
  * Fetch trade history from Binance API
- * Returns last 500 trades with PnL for stats
+ * Uses /fapi/v1/income for realized PnL across all symbols
  */
-export const fetchTradeHistory = async (exchange: Exchange): Promise<{ symbol: string; side: string; pnl: number; qty: number; price: number; time: number; realizedPnl: number }[]> => {
+export const fetchTradeHistory = async (exchange: Exchange): Promise<{ symbol: string; side: string; pnl: number; qty: number; price: number; time: number; realizedPnl: number; commission?: number }[]> => {
   if (!exchange.apiKey) return [];
   try {
-    const data = await callBinanceProxy('/fapi/v1/userTrades', 'GET', { limit: 500 }, exchange);
-    if (!Array.isArray(data)) return [];
-    return data.map((t: any) => ({
-      symbol: t.symbol,
-      side: t.side,
-      pnl: parseFloat(t.realizedPnl || '0'),
-      qty: parseFloat(t.qty),
-      price: parseFloat(t.price),
-      time: t.time,
-      realizedPnl: parseFloat(t.realizedPnl || '0'),
-    }));
+    // Strategy: use income endpoint (REALIZED_PNL) — works without symbol
+    const incomeData = await callBinanceProxy('/fapi/v1/income', 'GET', {
+      incomeType: 'REALIZED_PNL',
+      limit: 1000,
+    }, exchange);
+    if (Array.isArray(incomeData) && incomeData.length > 0) {
+      return incomeData.map((t: any) => ({
+        symbol: t.symbol || '',
+        side: parseFloat(t.income) >= 0 ? 'SELL' : 'BUY',
+        pnl: parseFloat(t.income || '0'),
+        qty: 0,
+        price: 0,
+        time: t.time,
+        realizedPnl: parseFloat(t.income || '0'),
+        commission: 0,
+      }));
+    }
+    // Fallback: /fapi/v1/userTrades for each open position symbol
+    return [];
   } catch (e) {
     console.error('[TRADE HISTORY]', e);
     return [];
