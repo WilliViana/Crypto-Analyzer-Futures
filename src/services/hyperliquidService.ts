@@ -8,33 +8,41 @@ import { callBinanceProxy } from './exchangeService';
  */
 
 // Fetch account data (balance, positions) from Hyperliquid
+// Fetches BOTH Perps (clearinghouseState) and Spot (spotClearinghouseState) in parallel
 export async function fetchHLAccountData(exchange: Exchange): Promise<RealAccountData> {
     try {
-        const data = await callBinanceProxy('clearinghouseState', 'POST', {}, {
-            ...exchange,
-            id: 'hyperliquid',
-        });
+        const hlExchange = { ...exchange, id: 'hyperliquid' as const };
+        // Fetch Perps + Spot in parallel
+        const [perpsData, spotData] = await Promise.all([
+            callBinanceProxy('clearinghouseState', 'POST', {}, hlExchange),
+            callBinanceProxy('spotClearinghouseState', 'POST', {}, hlExchange),
+        ]);
 
-        console.log('[HL] clearinghouseState response keys:', data ? Object.keys(data) : 'null');
+        console.log('[HL] perps keys:', perpsData ? Object.keys(perpsData) : 'null');
+        console.log('[HL] spot keys:', spotData ? Object.keys(spotData) : 'null');
 
-        if (!data) {
-            return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
+        // Parse Perps balance
+        const perpsSummary = perpsData?.crossMarginSummary || perpsData?.marginSummary;
+        const perpsBalance = parseFloat(perpsSummary?.accountValue || '0');
+
+        // Parse Spot balance — spotClearinghouseState returns { balances: [...] }
+        let spotBalance = 0;
+        if (spotData?.balances && Array.isArray(spotData.balances)) {
+            for (const b of spotData.balances) {
+                const coin = b.coin || b.token || '';
+                const total = parseFloat(b.total || '0');
+                if (coin === 'USDC' || coin === 'USDT') {
+                    spotBalance += total;
+                }
+            }
+            console.log('[HL] spotBalances:', JSON.stringify(spotData.balances));
         }
+        console.log('[HL] perpsBalance=', perpsBalance, 'spotBalance=', spotBalance);
 
-        // Hyperliquid returns crossMarginSummary (or marginSummary as fallback)
-        const marginSummary = data.crossMarginSummary || data.marginSummary;
-        console.log('[HL] marginSummary:', JSON.stringify(marginSummary));
+        const totalBalance = perpsBalance + spotBalance;
 
-        if (!marginSummary) {
-            console.warn('[HL] No marginSummary or crossMarginSummary found in response');
-            return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
-        }
-
-        const totalBalance = parseFloat(marginSummary.accountValue || '0');
-        const totalNtlPos = parseFloat(marginSummary.totalNtlPos || '0');
-
-        // Map positions to assets format
-        const assets = (data.assetPositions || [])
+        // Map perps positions to assets format
+        const assets = (perpsData?.assetPositions || [])
             .filter((p: any) => {
                 const pos = p.position || p;
                 return pos && parseFloat(pos.szi || '0') !== 0;
@@ -58,7 +66,7 @@ export async function fetchHLAccountData(exchange: Exchange): Promise<RealAccoun
             });
 
         const totalPnL = assets.reduce((sum: number, a: any) => sum + a.unrealizedPnL, 0);
-        console.log('[HL] Parsed: totalBalance=', totalBalance, 'pnl=', totalPnL, 'positions=', assets.length);
+        console.log('[HL] TOTAL: balance=', totalBalance, 'pnl=', totalPnL, 'positions=', assets.length);
 
         return {
             totalBalance,
