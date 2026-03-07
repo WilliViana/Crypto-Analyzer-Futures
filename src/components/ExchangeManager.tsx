@@ -100,10 +100,10 @@ const ExchangeManager: React.FC<ExchangeManagerProps> = ({ exchanges, setExchang
 
             addLog(`🔍 Validando credenciais da API ${selectedExchange.name}...`, 'INFO');
 
-            // Only Binance has full proxy validation, others do basic save
-            const isBinance = selectedExchange.id === 'binance';
+            // Binance and Hyperliquid have full proxy validation
+            const hasValidation = selectedExchange.id === 'binance' || selectedExchange.id === 'hyperliquid';
 
-            if (isBinance) {
+            if (hasValidation) {
                 const validation = await validateApiCredentials(tempExchange);
                 if (!validation.valid) {
                     let friendlyError = validation.error || 'Credenciais inválidas';

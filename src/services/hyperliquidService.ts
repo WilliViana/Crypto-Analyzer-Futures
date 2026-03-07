@@ -15,29 +15,39 @@ export async function fetchHLAccountData(exchange: Exchange): Promise<RealAccoun
             id: 'hyperliquid',
         });
 
-        if (!data || !data.marginSummary) {
+        console.log('[HL] clearinghouseState response keys:', data ? Object.keys(data) : 'null');
+
+        if (!data) {
             return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
         }
 
-        const marginSummary = data.marginSummary;
+        // Hyperliquid returns crossMarginSummary (or marginSummary as fallback)
+        const marginSummary = data.crossMarginSummary || data.marginSummary;
+        console.log('[HL] marginSummary:', JSON.stringify(marginSummary));
+
+        if (!marginSummary) {
+            console.warn('[HL] No marginSummary or crossMarginSummary found in response');
+            return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
+        }
+
         const totalBalance = parseFloat(marginSummary.accountValue || '0');
-        const unrealizedPnL = parseFloat(marginSummary.totalNtlPos || '0') > 0
-            ? parseFloat(marginSummary.accountValue || '0') - parseFloat(marginSummary.totalMarginUsed || '0')
-            : 0;
+        const totalNtlPos = parseFloat(marginSummary.totalNtlPos || '0');
 
         // Map positions to assets format
         const assets = (data.assetPositions || [])
-            .filter((p: any) => p.position && parseFloat(p.position.szi) !== 0)
+            .filter((p: any) => {
+                const pos = p.position || p;
+                return pos && parseFloat(pos.szi || '0') !== 0;
+            })
             .map((p: any) => {
-                const pos = p.position;
+                const pos = p.position || p;
                 const amount = parseFloat(pos.szi || '0');
                 const entryPrice = parseFloat(pos.entryPx || '0');
-                const markPrice = parseFloat(pos.positionValue || '0') / Math.abs(amount || 1);
                 const upnl = parseFloat(pos.unrealizedPnl || '0');
-                const value = parseFloat(pos.positionValue || '0');
+                const value = Math.abs(amount) * entryPrice;
 
                 return {
-                    symbol: pos.coin + 'USDC',
+                    symbol: (pos.coin || '') + 'USDC',
                     amount,
                     price: entryPrice,
                     value,
@@ -47,11 +57,14 @@ export async function fetchHLAccountData(exchange: Exchange): Promise<RealAccoun
                 };
             });
 
+        const totalPnL = assets.reduce((sum: number, a: any) => sum + a.unrealizedPnL, 0);
+        console.log('[HL] Parsed: totalBalance=', totalBalance, 'pnl=', totalPnL, 'positions=', assets.length);
+
         return {
             totalBalance,
-            unrealizedPnL: assets.reduce((sum: number, a: any) => sum + a.unrealizedPnL, 0),
+            unrealizedPnL: totalPnL,
             assets,
-            isSimulated: false,
+            isSimulated: exchange.isTestnet,
         };
     } catch (e) {
         console.error('[HL] fetchHLAccountData error:', e);
@@ -67,9 +80,16 @@ export async function validateHLCredentials(exchange: Exchange): Promise<{ valid
             id: 'hyperliquid',
         });
 
-        if (data && data.marginSummary) {
-            const balance = parseFloat(data.marginSummary.accountValue || '0');
+        console.log('[HL validate] response:', data ? Object.keys(data) : 'null');
+        const ms = data?.crossMarginSummary || data?.marginSummary;
+        if (ms) {
+            const balance = parseFloat(ms.accountValue || '0');
+            console.log('[HL validate] accountValue =', balance);
             return { valid: true, balance };
+        }
+        // Even if no margin summary, if we got a response, the wallet exists
+        if (data && typeof data === 'object') {
+            return { valid: true, balance: 0 };
         }
         return { valid: false, error: 'Wallet não encontrada ou sem dados' };
     } catch (e: any) {
