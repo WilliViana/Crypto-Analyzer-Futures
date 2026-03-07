@@ -25,7 +25,7 @@ import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { supabase } from './services/supabaseClient';
 import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
-import { Play, Square, Settings, Loader2 } from 'lucide-react';
+import { Play, Square, Settings, Loader2, LayoutDashboard, Wallet, History, Menu, Layers, LineChart, FileText, ShieldAlert } from 'lucide-react';
 
 const BATCH_SIZE = 15;
 
@@ -750,6 +750,35 @@ export default function App() {
       }} />}
       {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`SISTEMA: Lista de ativos atualizada.`, 'INFO'); }} />}
       <ChatBot lang={lang} marketData={{ price: 0, change24h: 0, rsi: 50, macd: 0, bollingerState: 'Middle', volume: 0, vwap: 0, atr: 0, stochasticK: 50, stochasticD: 50, macdSignal: 0, macdHist: 0 }} symbol="BTC" />
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="mobile-bottom-nav">
+        <button className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => setActiveTab('dashboard')}>
+          <LayoutDashboard size={20} />
+          <span>Início</span>
+        </button>
+        <button className={activeTab === 'strategies' ? 'active' : ''} onClick={() => setActiveTab('strategies')}>
+          <Layers size={20} />
+          <span>Motor</span>
+        </button>
+        <button className={activeTab === 'wallet' ? 'active' : ''} onClick={() => setActiveTab('wallet')}>
+          <Wallet size={20} />
+          <span>Carteira</span>
+        </button>
+        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>
+          <History size={20} />
+          <span>Histórico</span>
+        </button>
+        <button className={['settings', 'risk', 'logs', 'analysis', 'info', 'profile'].includes(activeTab) ? 'active' : ''} onClick={() => {
+          const menuTabs = ['settings', 'risk', 'logs', 'analysis', 'info', 'profile'];
+          const currentIdx = menuTabs.indexOf(activeTab);
+          const nextTab = menuTabs[(currentIdx + 1) % menuTabs.length];
+          setActiveTab(nextTab);
+        }}>
+          <Menu size={20} />
+          <span>Mais</span>
+        </button>
+      </nav>
     </div>
   );
 }

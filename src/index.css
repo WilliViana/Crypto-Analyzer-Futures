@@ -14,8 +14,15 @@ body {
 }
 
 @keyframes glow {
-  0%, 100% { filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.2)); }
-  50% { filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.4)); }
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.2));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.4));
+  }
 }
 
 .logo-glow {
@@ -23,11 +30,200 @@ body {
 }
 
 @keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeOut {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100%); opacity: 0; }
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* ===== MOBILE RESPONSIVE ===== */
+
+/* Mobile bottom navigation */
+@media (max-width: 768px) {
+
+  /* Hide desktop sidebar on mobile */
+  .flex.h-screen>div:first-child {
+    display: none !important;
+  }
+
+  /* Main content fills entire screen on mobile */
+  .flex.h-screen>main {
+    width: 100% !important;
+    padding-bottom: 70px;
+    /* Space for bottom nav */
+  }
+
+  /* Compact header on mobile */
+  header.h-16 {
+    height: 48px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  header h1 {
+    display: block !important;
+    font-size: 14px !important;
+  }
+
+  /* Cards compactos */
+  .grid.grid-cols-2,
+  .grid.grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .grid.sm\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Perfis ativos: scroll horizontal */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-3 {
+    display: flex !important;
+    overflow-x: auto !important;
+    gap: 12px !important;
+    padding-bottom: 8px !important;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-3>* {
+    min-width: 260px !important;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* Touch targets mínimo 44px */
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Modals full-width no mobile */
+  .fixed.inset-0>div {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  /* Abas do strategy modal scrolláveis */
+  .flex.border-b button {
+    font-size: 10px !important;
+    padding: 10px 6px !important;
+  }
+
+  /* Padding reduzido no mobile */
+  .p-4.lg\:p-6 {
+    padding: 8px !important;
+  }
+
+  .p-6 {
+    padding: 12px !important;
+  }
+
+  /* Text size adjustments */
+  .text-lg {
+    font-size: 14px !important;
+  }
+
+  .text-xl {
+    font-size: 16px !important;
+  }
+
+  .text-2xl,
+  .text-3xl {
+    font-size: 20px !important;
+  }
+
+  /* Tabela audit logs scrollável */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Equity curve chart full width */
+  .recharts-wrapper {
+    width: 100% !important;
+  }
+}
+
+/* Bottom Nav Bar - Mobile Only */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(21, 26, 37, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(42, 48, 60, 0.8);
+    z-index: 100;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 8px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-bottom-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    background: transparent;
+    border: none;
+    color: #9CA3AF;
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  .mobile-bottom-nav button.active {
+    color: #22D3EE;
+    background: rgba(34, 211, 238, 0.1);
+  }
+
+  .mobile-bottom-nav button span {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(21, 26, 37, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
