@@ -1,6 +1,7 @@
 import { OrderRequest, Exchange, Trade, RealAccountData } from '../types';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabaseClient';
 import { addAuditLog, AUDIT_ACTIONS } from './auditService';
+import { fetchHLAccountData, validateHLCredentials, fetchHLTradeHistory } from './hyperliquidService';
 
 function fixPrecision(value: number, precision: number): string {
   if (!value || isNaN(value)) return "0";
@@ -70,6 +71,8 @@ export const fetchMarketInfo = async (exchange: Exchange) => {
 
 export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAccountData> => {
   if (!exchange.apiKey) return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
+  // Route to Hyperliquid service
+  if (exchange.id === 'hyperliquid') return fetchHLAccountData(exchange);
   try {
     const data = await callBinanceProxy('/fapi/v2/account', 'GET', {}, exchange);
     const assets = (data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).map((p: any) => ({
@@ -84,6 +87,8 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
  * Returns { valid, balance?, error? }
  */
 export const validateApiCredentials = async (exchange: Exchange): Promise<{ valid: boolean; balance?: number; error?: string }> => {
+  // Route to Hyperliquid validation
+  if (exchange.id === 'hyperliquid') return validateHLCredentials(exchange);
   try {
     const data = await callBinanceProxy('/fapi/v2/balance', 'GET', {}, exchange);
     if (Array.isArray(data)) {
@@ -355,6 +360,8 @@ export const closePosition = async (
  */
 export const fetchTradeHistory = async (exchange: Exchange): Promise<{ symbol: string; side: string; pnl: number; qty: number; price: number; time: number; realizedPnl: number; commission?: number }[]> => {
   if (!exchange.apiKey) return [];
+  // Route to Hyperliquid
+  if (exchange.id === 'hyperliquid') return fetchHLTradeHistory(exchange);
   try {
     // Strategy: use income endpoint (REALIZED_PNL) — works without symbol
     const incomeData = await callBinanceProxy('/fapi/v1/income', 'GET', {

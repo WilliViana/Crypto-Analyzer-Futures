@@ -35,7 +35,7 @@ const CEX_LIST: ExchangeOption[] = [
 ];
 
 const DEX_LIST: ExchangeOption[] = [
-    { id: 'hyperliquid', name: 'Hyperliquid', type: 'DEX', color: 'text-green-400', bg: 'bg-green-500/10', icon: 'HL', hasSecret: false, testnetAvailable: true, placeholder: { key: 'Wallet Address (0x...)', secret: '' } },
+    { id: 'hyperliquid', name: 'Hyperliquid', type: 'DEX', color: 'text-green-400', bg: 'bg-green-500/10', icon: 'HL', hasSecret: true, testnetAvailable: true, placeholder: { key: 'Wallet Address (0x...)', secret: 'Private Key (0x...)' } },
     { id: 'dydx', name: 'dYdX', type: 'DEX', color: 'text-purple-400', bg: 'bg-purple-500/10', icon: 'dY', hasSecret: true, testnetAvailable: true, placeholder: { key: 'dYdX API Key', secret: 'dYdX API Secret' } },
     { id: 'gmx', name: 'GMX', type: 'DEX', color: 'text-blue-300', bg: 'bg-blue-400/10', icon: 'GM', hasSecret: false, testnetAvailable: false, placeholder: { key: 'Wallet Address (0x...)', secret: '' } },
     { id: 'perpetual', name: 'Perpetual Protocol', type: 'DEX', color: 'text-teal-400', bg: 'bg-teal-500/10', icon: 'PP', hasSecret: false, testnetAvailable: false, placeholder: { key: 'Wallet Address (0x...)', secret: '' } },
