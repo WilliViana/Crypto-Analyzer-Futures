@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
 import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
-import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory } from '../services/exchangeService';
+import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory, callBinanceProxy } from '../services/exchangeService';
 
 interface DashboardOverviewProps {
     lang: Language;
@@ -49,51 +49,40 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [metricTooltip, setMetricTooltip] = useState<string | null>(null);
     const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
     const [livePrice, setLivePrice] = useState<number | null>(null);
+    const livePriceSymbolRef = useRef<string | null>(null);
 
-    // WebSocket for live price when position modal is open
+    // Stable REST polling for live price (every 3s) — no flicker
     useEffect(() => {
-        if (!selectedOrder) {
-            setLivePrice(null);
+        const symbol = selectedOrder?.symbol;
+        if (!symbol) {
+            if (livePriceSymbolRef.current) {
+                livePriceSymbolRef.current = null;
+                setLivePrice(null);
+            }
             return;
         }
-        const symbol = selectedOrder.symbol?.toLowerCase();
-        if (!symbol) return;
+        // Only reset if symbol changed
+        if (livePriceSymbolRef.current !== symbol) {
+            livePriceSymbolRef.current = symbol;
+            setLivePrice(null); // Reset only on symbol change
+        }
 
-        // Detect if testnet from exchange
         const activeExchange = exchanges?.find((e: any) => e.status === 'CONNECTED');
-        const isTestnet = activeExchange?.isTestnet;
-        const wsBase = isTestnet
-            ? 'wss://fstream.binancefuture.com/ws'
-            : 'wss://fstream.binance.com/ws';
+        if (!activeExchange) return;
 
-        let ws: WebSocket | null = null;
-        try {
-            ws = new WebSocket(`${wsBase}/${symbol}@markPrice`);
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.p) setLivePrice(parseFloat(data.p));
-                } catch { }
-            };
-            ws.onerror = () => { };
-        } catch { }
-
-        // Fallback: REST API after 3s if WS doesn't connect
-        const fallbackTimer = setTimeout(async () => {
-            if (!livePrice && activeExchange) {
-                try {
-                    const { callBinanceProxy } = await import('../services/exchangeService');
-                    const ticker = await callBinanceProxy('/fapi/v1/ticker/price', 'GET', { symbol: selectedOrder.symbol }, activeExchange);
-                    if (ticker?.price) setLivePrice(parseFloat(ticker.price));
-                } catch { }
-            }
-        }, 3000);
-
-        return () => {
-            clearTimeout(fallbackTimer);
-            ws?.close();
+        const fetchPrice = async () => {
+            try {
+                const ticker = await callBinanceProxy('/fapi/v1/ticker/price', 'GET', { symbol }, activeExchange);
+                if (ticker?.price && livePriceSymbolRef.current === symbol) {
+                    setLivePrice(parseFloat(ticker.price));
+                }
+            } catch { }
         };
-    }, [selectedOrder]);
+
+        fetchPrice(); // Immediate first fetch
+        const interval = setInterval(fetchPrice, 3000);
+        return () => clearInterval(interval);
+    }, [selectedOrder?.symbol, exchanges]);
 
     useEffect(() => {
         if (totalBalance > 0) {

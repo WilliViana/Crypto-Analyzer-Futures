@@ -99,6 +99,7 @@ export default function App() {
   const [availableQuotes, setAvailableQuotes] = useState<string[]>([]);
   const [selectedPairs, setSelectedPairs] = useState<string[]>(['BTCUSDT']);
   const [showPairSelector, setShowPairSelector] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const [profileIndex, setProfileIndex] = useState(0);
   const [assetBatchIndex, setAssetBatchIndex] = useState(0);
@@ -753,32 +754,53 @@ export default function App() {
 
       {/* Mobile Bottom Navigation */}
       <nav className="mobile-bottom-nav">
-        <button className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => setActiveTab('dashboard')}>
+        <button className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => { setActiveTab('dashboard'); setShowMobileMenu(false); }}>
           <LayoutDashboard size={20} />
           <span>Início</span>
         </button>
-        <button className={activeTab === 'strategies' ? 'active' : ''} onClick={() => setActiveTab('strategies')}>
+        <button className={activeTab === 'strategies' ? 'active' : ''} onClick={() => { setActiveTab('strategies'); setShowMobileMenu(false); }}>
           <Layers size={20} />
           <span>Motor</span>
         </button>
-        <button className={activeTab === 'wallet' ? 'active' : ''} onClick={() => setActiveTab('wallet')}>
+        <button className={activeTab === 'risk' ? 'active' : ''} onClick={() => { setActiveTab('risk'); setShowMobileMenu(false); }}>
+          <ShieldAlert size={20} />
+          <span>Riscos</span>
+        </button>
+        <button className={activeTab === 'wallet' ? 'active' : ''} onClick={() => { setActiveTab('wallet'); setShowMobileMenu(false); }}>
           <Wallet size={20} />
           <span>Carteira</span>
         </button>
-        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>
-          <History size={20} />
-          <span>Histórico</span>
-        </button>
-        <button className={['settings', 'risk', 'logs', 'analysis', 'info', 'profile'].includes(activeTab) ? 'active' : ''} onClick={() => {
-          const menuTabs = ['settings', 'risk', 'logs', 'analysis', 'info', 'profile'];
-          const currentIdx = menuTabs.indexOf(activeTab);
-          const nextTab = menuTabs[(currentIdx + 1) % menuTabs.length];
-          setActiveTab(nextTab);
-        }}>
+        <button className={showMobileMenu || ['history', 'analysis', 'logs', 'settings', 'info', 'profile'].includes(activeTab) ? 'active' : ''} onClick={() => setShowMobileMenu(!showMobileMenu)}>
           <Menu size={20} />
           <span>Mais</span>
         </button>
       </nav>
+
+      {/* Mobile "Mais" popup */}
+      {showMobileMenu && (
+        <>
+          <div className="fixed inset-0 z-[99]" onClick={() => setShowMobileMenu(false)} />
+          <div className="fixed bottom-[68px] right-2 left-2 z-[101] bg-[#1A1F2E] border border-[#2A303C] rounded-2xl shadow-2xl p-3 grid grid-cols-3 gap-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
+            {[
+              { id: 'history', icon: History, label: 'Histórico' },
+              { id: 'analysis', icon: LineChart, label: 'Análise' },
+              { id: 'logs', icon: FileText, label: 'Auditoria' },
+              { id: 'settings', icon: Settings, label: 'API' },
+              { id: 'info', icon: Menu, label: 'Info' },
+              { id: 'profile', icon: Layers, label: 'Perfil' },
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
+                className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-cyan-500/10 text-cyan-400' : 'text-gray-400 hover:bg-white/5'}`}
+              >
+                <item.icon size={20} />
+                <span className="text-[9px] font-semibold uppercase">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
