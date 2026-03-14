@@ -114,6 +114,63 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
 };
 
 /**
+ * Fetch spot wallet balance from Binance
+ * Uses /sapi/v3/asset/getUserAsset for spot balances
+ */
+export const fetchSpotBalance = async (exchange: Exchange): Promise<number> => {
+  if (!exchange.apiKey) return 0;
+  if (exchange.id === 'hyperliquid') return 0; // HL doesn't have spot on this endpoint
+  try {
+    // Try /sapi/v3/asset/getUserAsset first (most reliable)
+    const data = await callBinanceProxy('/sapi/v3/asset/getUserAsset', 'POST', {}, exchange);
+    if (Array.isArray(data)) {
+      const total = data.reduce((sum: number, a: any) => {
+        const free = parseFloat(a.free || '0');
+        const locked = parseFloat(a.locked || '0');
+        const btcVal = parseFloat(a.btcValuation || '0');
+        // Use btcValuation if available, otherwise aggregate free+locked for USDT/USDC
+        if (a.asset === 'USDT' || a.asset === 'USDC') return sum + free + locked;
+        return sum; // For non-stablecoins, we'd need price conversion
+      }, 0);
+      console.log('[SPOT] Balance from getUserAsset:', total);
+      if (total > 0) return total;
+    }
+  } catch (e1) {
+    console.warn('[SPOT] getUserAsset failed, trying /api/v3/account:', e1);
+  }
+  try {
+    // Fallback: /api/v3/account (spot account info)
+    const data = await callBinanceProxy('/api/v3/account', 'GET', {}, exchange);
+    if (data.balances && Array.isArray(data.balances)) {
+      const total = data.balances.reduce((sum: number, b: any) => {
+        const free = parseFloat(b.free || '0');
+        const locked = parseFloat(b.locked || '0');
+        if (b.asset === 'USDT' || b.asset === 'USDC') return sum + free + locked;
+        return sum;
+      }, 0);
+      console.log('[SPOT] Balance from /api/v3/account:', total);
+      return total;
+    }
+  } catch (e2) {
+    console.warn('[SPOT] /api/v3/account also failed:', e2);
+  }
+  // Fallback: try /fapi/v2/balance and sum non-futures assets
+  try {
+    const data = await callBinanceProxy('/fapi/v2/balance', 'GET', {}, exchange);
+    if (Array.isArray(data)) {
+      const usdt = data.find((a: any) => a.asset === 'USDT');
+      const usdc = data.find((a: any) => a.asset === 'USDC');
+      const total = (usdt ? parseFloat(usdt.availableBalance || '0') : 0) + (usdc ? parseFloat(usdc.availableBalance || '0') : 0);
+      console.log('[SPOT] Balance from /fapi/v2/balance fallback:', total);
+      return total;
+    }
+  } catch (e3) {
+    console.error('[SPOT] All balance fetch methods failed:', e3);
+  }
+  return 0;
+};
+
+/**
  * Validates API credentials by making a test call to Binance.
  * Returns { valid, balance?, error? }
  */

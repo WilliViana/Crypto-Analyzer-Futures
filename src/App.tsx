@@ -26,7 +26,7 @@ import { initVPNService } from './services/vpnService';
 import { initNotificationService, getUnreadCount } from './services/notificationService';
 
 import { fetchHistoricalCandles } from './services/marketService';
-import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy } from './services/exchangeService';
+import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy, fetchSpotBalance } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { quickTrendCheck } from './services/multiTimeframeService';
 import { analyzeVolatility, type RiskProfile } from './utils/volatilityFilter';
@@ -93,6 +93,7 @@ export default function App() {
   });
   const [dailyTargetReached, setDailyTargetReached] = useState(false);
   const [showDailyTargetModal, setShowDailyTargetModal] = useState(false);
+  const [spotBalance, setSpotBalance] = useState<number>(0);
 
   // Risk Management
   const [riskMode, setRiskMode] = useState<RiskMode>(() => {
@@ -561,6 +562,11 @@ export default function App() {
     if (activeExchange) {
       const data = await fetchRealAccountData(activeExchange);
 
+      // Fetch spot balance in parallel
+      fetchSpotBalance(activeExchange).then(sb => {
+        if (sb > 0) setSpotBalance(sb);
+      }).catch(() => {});
+
       // For positions without a profileMap entry, try to find from Supabase audit
       const unmappedSymbols = data.assets.filter(a => !profileMapRef.current[a.symbol]).map(a => a.symbol);
       if (unmappedSymbols.length > 0) {
@@ -761,7 +767,7 @@ export default function App() {
       case 'analysis':
         return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
       case 'logs': return <AuditLog logs={logs} />;
-      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
+      case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} spotBalance={spotBalance} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
       case 'risk': return <RiskManagement riskMode={riskMode} setRiskMode={setRiskMode} dailyTargetPct={dailyTargetPct} setDailyTargetPct={setDailyTargetPct} dailyStopLossPct={dailyStopLossPct} setDailyStopLossPct={setDailyStopLossPct} profiles={profiles} setProfiles={setProfiles} lang={lang} />;
       case 'vpn': return <VPNManager />;
