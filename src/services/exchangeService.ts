@@ -75,11 +75,17 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
   if (exchange.id === 'hyperliquid') return fetchHLAccountData(exchange);
   try {
     const data = await callBinanceProxy('/fapi/v2/account', 'GET', {}, exchange);
+    const balance = parseFloat(data.totalMarginBalance) || 0;
+    const pnl = parseFloat(data.totalUnrealizedProfit) || 0;
+    console.log(`[BALANCE] totalMarginBalance=${balance}, unrealizedPnL=${pnl}, positions=${(data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).length}`);
     const assets = (data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).map((p: any) => ({
       symbol: p.symbol, amount: parseFloat(p.positionAmt), price: parseFloat(p.entryPrice), value: parseFloat(p.notional), unrealizedPnL: parseFloat(p.unrealizedProfit), initialMargin: parseFloat(p.initialMargin)
     }));
-    return { totalBalance: parseFloat(data.totalMarginBalance), unrealizedPnL: parseFloat(data.totalUnrealizedProfit), assets, isSimulated: exchange.isTestnet };
-  } catch (error) { return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false }; }
+    return { totalBalance: balance, unrealizedPnL: pnl, assets, isSimulated: exchange.isTestnet };
+  } catch (error: any) {
+    console.error('[BALANCE ERROR]', error?.message || error);
+    return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
+  }
 };
 
 /**
