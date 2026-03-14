@@ -18,14 +18,24 @@ import ChatBot from './components/ChatBot';
 import AnalysisView from './components/AnalysisView';
 import UserProfile from './components/UserProfile';
 import InformationTab from './components/InformationTab';
+import VPNManager from './components/VPNManager';
+import VPNStatus from './components/VPNStatus';
+import NotificationCenter from './components/NotificationCenter';
+import PDCADashboard from './components/PDCADashboard';
+import { initVPNService } from './services/vpnService';
+import { initNotificationService, getUnreadCount } from './services/notificationService';
 
 import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
+import { quickTrendCheck } from './services/multiTimeframeService';
+import { analyzeVolatility, type RiskProfile } from './utils/volatilityFilter';
+import { calculateVPM, type ProfileRisk } from './utils/vpmCalculator';
+import { analyzeSentimentThrottled, generateTradingRecommendation } from './services/sentimentService';
 import { supabase } from './services/supabaseClient';
 import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
-import { Play, Square, Settings, Loader2, LayoutDashboard, Wallet, History, Menu, Layers, LineChart, FileText, ShieldAlert } from 'lucide-react';
+import { Play, Square, Settings, Loader2, LayoutDashboard, Wallet, History, Menu, Layers, LineChart, FileText, ShieldAlert, Bell } from 'lucide-react';
 
 const BATCH_SIZE = 15;
 
@@ -103,8 +113,15 @@ export default function App() {
 
   const [profileIndex, setProfileIndex] = useState(0);
   const [assetBatchIndex, setAssetBatchIndex] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const scanIntervalRef = useRef<any>(null);
+
+  // Init services
+  useEffect(() => {
+    initVPNService();
+    initNotificationService();
+  }, []);
 
   const addLog = useCallback((message: string, level: LogEntry['level'] = 'INFO') => {
     const newLog: LogEntry = {
@@ -421,6 +438,22 @@ export default function App() {
                 break;
               }
 
+              // --- FILTRO 1: Quick Trend Check (1h) ---
+              const trendOk = await quickTrendCheck(symbol, analysis.signal);
+              if (!trendOk) {
+                addLog(`SKIP [TREND]: ${symbol} ${analysis.signal} rejeitado — tendência 1h contrária`, 'WARNING');
+                continue;
+              }
+
+              // --- FILTRO 2: Volatilidade por perfil ---
+              const riskMap: Record<string, RiskProfile> = { 'Low': 'conservative', 'Med': 'moderate', 'High': 'aggressive', 'Expert': 'aggressive', 'Extreme': 'aggressive' };
+              const riskProfile: RiskProfile = riskMap[currentProfile.riskLevel] || 'moderate';
+              const volAnalysis = analyzeVolatility(candles, candles[candles.length - 1].close, riskProfile);
+              if (volAnalysis.recommendation === 'SKIP') {
+                addLog(`SKIP [VOL]: ${symbol} — ${volAnalysis.reasoning}`, 'WARNING');
+                continue;
+              }
+
               // --- ENVELOPE DE CAPITAL: verifica saldo livre do perfil ---
               const profileCurrentCapital = currentProfile.currentCapital ?? currentProfile.capital;
               if (profileCurrentCapital <= 0) {
@@ -440,13 +473,43 @@ export default function App() {
                 break;
               }
 
+              // --- VPM Dinâmico: TP/SL adaptativos ---
+              const price = candles[candles.length - 1].close;
+              const profileRiskVpm: ProfileRisk = riskMap[currentProfile.riskLevel] as ProfileRisk || 'moderate';
+              const vpmResult = calculateVPM(candles, price, analysis.signal, profileRiskVpm);
+
+              // Se qualidade POOR e perfil conservador, pula
+              if (vpmResult.quality === 'POOR' && currentProfile.riskLevel === 'Low') {
+                addLog(`SKIP [VPM]: ${symbol} — qualidade POOR para perfil conservador. R:R ${vpmResult.riskRewardRatio.toFixed(2)}`, 'WARNING');
+                continue;
+              }
+
+              // Usa VPM dinâmico para TP/SL (com fallback nos valores fixos do perfil)
+              const sl = vpmResult.quality !== 'POOR' ? vpmResult.stopLoss
+                : (analysis.signal === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100));
+              const tp = vpmResult.quality !== 'POOR' ? vpmResult.takeProfit
+                : (analysis.signal === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100));
+
+              // --- SENTIMENTO (throttled, não bloqueia) ---
+              let sentimentNote = '';
+              try {
+                const techCtx = `${analysis.signal} conf=${analysis.confidence.toFixed(1)}% | ${analysis.details.join(', ')} | Vol=${volAnalysis.level} ATR=${volAnalysis.atrPercent.toFixed(2)}%`;
+                const sentiment = await analyzeSentimentThrottled(symbol, techCtx);
+                if (sentiment.confidence > 50) {
+                  sentimentNote = ` | Sentimento: ${sentiment.sentiment} (${sentiment.confidence}%)`;
+                  // Se sentimento diverge forte, rebaixa para WAIT
+                  if ((analysis.signal === 'BUY' && sentiment.sentiment === 'BEARISH' && sentiment.confidence > 70) ||
+                      (analysis.signal === 'SELL' && sentiment.sentiment === 'BULLISH' && sentiment.confidence > 70)) {
+                    addLog(`WAIT [SENT]: ${symbol} — sentimento ${sentiment.sentiment} (${sentiment.confidence}%) diverge do sinal técnico`, 'WARNING');
+                    continue;
+                  }
+                }
+              } catch { /* Não bloqueia trade se sentimento falhar */ }
+
               const side = analysis.signal;
               const reasons = analysis.details.join(', ');
-              addLog(`GATILHO [${currentProfile.name}]: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}`, 'SUCCESS');
-
-              const price = candles[candles.length - 1].close;
-              const sl = side === 'BUY' ? price * (1 - currentProfile.stopLoss / 100) : price * (1 + currentProfile.stopLoss / 100);
-              const tp = side === 'BUY' ? price * (1 + currentProfile.takeProfit / 100) : price * (1 - currentProfile.takeProfit / 100);
+              const vpmInfo = vpmResult.quality !== 'POOR' ? ` | VPM: R:R ${vpmResult.riskRewardRatio.toFixed(2)} (${vpmResult.quality})` : '';
+              addLog(`GATILHO [${currentProfile.name}]: ${symbol} ${side} (${analysis.confidence.toFixed(1)}%) - ${reasons}${vpmInfo}${sentimentNote}`, 'SUCCESS');
 
               // Add to open positions immediately to prevent duplicates
               openPositionsRef.current.add(symbol);
@@ -463,7 +526,7 @@ export default function App() {
                 if (res.success) {
                   profileMapRef.current[symbol] = currentProfile.name;
                   try { localStorage.setItem('profileMap', JSON.stringify(profileMapRef.current)); } catch { }
-                  addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)}`, 'SUCCESS');
+                  addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)} | TP: $${tp.toFixed(2)} SL: $${sl.toFixed(2)}`, 'SUCCESS');
                   fetchRealData();
                 } else {
                   openPositionsRef.current.delete(symbol);
@@ -701,6 +764,8 @@ export default function App() {
       case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} />;
       case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
       case 'risk': return <RiskManagement riskMode={riskMode} setRiskMode={setRiskMode} dailyTargetPct={dailyTargetPct} setDailyTargetPct={setDailyTargetPct} dailyStopLossPct={dailyStopLossPct} setDailyStopLossPct={setDailyStopLossPct} profiles={profiles} setProfiles={setProfiles} lang={lang} />;
+      case 'vpn': return <VPNManager />;
+      case 'agents': return <PDCADashboard />;
       case 'admin': return <AdminPanel lang={lang} />;
       case 'profile': return <UserProfile lang={lang} />;
       case 'info': return <InformationTab lang={lang} />;
@@ -727,6 +792,19 @@ export default function App() {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            <VPNStatus onClick={() => setActiveTab('vpn')} />
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="relative p-2 rounded-lg bg-[#2A303C] hover:bg-[#353C4B] text-gray-400 transition-all"
+              title="Notificações"
+            >
+              <Bell size={16} />
+              {getUnreadCount() > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
+                  {getUnreadCount() > 9 ? '9+' : getUnreadCount()}
+                </span>
+              )}
+            </button>
             <div className="text-xs text-gray-500 font-mono hidden md:block">
               Motor: {isRunning ? 'EXECUTANDO' : 'PAUSADO'}
             </div>
@@ -751,6 +829,7 @@ export default function App() {
       }} />}
       {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`SISTEMA: Lista de ativos atualizada.`, 'INFO'); }} />}
       <ChatBot lang={lang} marketData={{ price: 0, change24h: 0, rsi: 50, macd: 0, bollingerState: 'Middle', volume: 0, vwap: 0, atr: 0, stochasticK: 50, stochasticD: 50, macdSignal: 0, macdHist: 0 }} symbol="BTC" />
+      <NotificationCenter isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
 
       {/* Mobile Bottom Navigation */}
       <nav className="mobile-bottom-nav">
