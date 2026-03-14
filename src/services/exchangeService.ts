@@ -75,15 +75,40 @@ export const fetchRealAccountData = async (exchange: Exchange): Promise<RealAcco
   if (exchange.id === 'hyperliquid') return fetchHLAccountData(exchange);
   try {
     const data = await callBinanceProxy('/fapi/v2/account', 'GET', {}, exchange);
-    const balance = parseFloat(data.totalMarginBalance) || 0;
-    const pnl = parseFloat(data.totalUnrealizedProfit) || 0;
-    console.log(`[BALANCE] totalMarginBalance=${balance}, unrealizedPnL=${pnl}, positions=${(data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).length}`);
+    console.log('[ACCOUNT] Raw response keys:', Object.keys(data || {}));
+
+    const totalBalance = parseFloat(data.totalMarginBalance || data.totalWalletBalance || '0');
+    const unrealizedPnL = parseFloat(data.totalUnrealizedProfit || '0');
+
+    if (totalBalance === 0 && data.totalMarginBalance === undefined) {
+      console.warn('[ACCOUNT] totalMarginBalance missing from response. Full keys:', Object.keys(data));
+      // Fallback: try /fapi/v2/balance endpoint
+      try {
+        const balanceData = await callBinanceProxy('/fapi/v2/balance', 'GET', {}, exchange);
+        if (Array.isArray(balanceData)) {
+          const usdt = balanceData.find((a: any) => a.asset === 'USDT');
+          const totalFromBalance = usdt ? parseFloat(usdt.balance || '0') : balanceData.reduce((s: number, a: any) => s + parseFloat(a.balance || '0'), 0);
+          console.log('[ACCOUNT] Fallback balance:', totalFromBalance);
+          if (totalFromBalance > 0) {
+            const assets = (data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).map((p: any) => ({
+              symbol: p.symbol, amount: parseFloat(p.positionAmt), price: parseFloat(p.entryPrice), value: parseFloat(p.notional), unrealizedPnL: parseFloat(p.unrealizedProfit), initialMargin: parseFloat(p.initialMargin)
+            }));
+            return { totalBalance: totalFromBalance, unrealizedPnL, assets, isSimulated: exchange.isTestnet };
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('[ACCOUNT] Fallback /fapi/v2/balance also failed:', fallbackErr);
+      }
+    }
+
     const assets = (data.positions || []).filter((p: any) => parseFloat(p.positionAmt) !== 0).map((p: any) => ({
       symbol: p.symbol, amount: parseFloat(p.positionAmt), price: parseFloat(p.entryPrice), value: parseFloat(p.notional), unrealizedPnL: parseFloat(p.unrealizedProfit), initialMargin: parseFloat(p.initialMargin)
     }));
-    return { totalBalance: balance, unrealizedPnL: pnl, assets, isSimulated: exchange.isTestnet };
+
+    console.log('[ACCOUNT] Balance:', totalBalance, '| Positions:', assets.length);
+    return { totalBalance, unrealizedPnL, assets, isSimulated: exchange.isTestnet };
   } catch (error: any) {
-    console.error('[BALANCE ERROR]', error?.message || error);
+    console.error('[ACCOUNT] fetchRealAccountData FAILED:', error?.message || error);
     return { totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false };
   }
 };

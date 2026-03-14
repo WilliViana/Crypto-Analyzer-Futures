@@ -45,8 +45,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [isClosingAll, setIsClosingAll] = useState(false);
     const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
     const [isClosingSelected, setIsClosingSelected] = useState(false);
-    const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number; ts: number }[]; bestTradeSymbol?: string; worstTradeSymbol?: string }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
-    const [apiTrades, setApiTrades] = useState<any[]>([]);
+    const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number; original_ts: number }[]; bestTradeSymbol?: string; worstTradeSymbol?: string }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
+    const [apiTrades, setApiTrades] = useState<{ symbol: string; side: string; pnl: number; time: number; realizedPnl: number }[]>([]);
     const [metricTooltip, setMetricTooltip] = useState<string | null>(null);
     const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
     const [livePrice, setLivePrice] = useState<number | null>(null);
@@ -162,7 +162,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         return () => clearInterval(interval);
     }, [onRefresh]);
 
-    // Fetch stats + trades from Binance API
+    // Fetch stats from Binance API
     const fetchApiStats = useCallback(async () => {
         const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
         if (!activeExchange) return;
@@ -171,9 +171,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 fetchTradeHistory(activeExchange),
                 fetchIncomeHistory(activeExchange),
             ]);
-
-            // Save API trades for the history table
-            setApiTrades(tradeHistory);
+            // Save raw trades for history display
+            setApiTrades(tradeHistory.filter(t => t.realizedPnl !== 0).map(t => ({
+                symbol: t.symbol, side: t.side, pnl: t.realizedPnl, time: t.time, realizedPnl: t.realizedPnl
+            })));
 
             // Group trades by orderId proximity (within 1s) for PnL calc
             const tradePnls = tradeHistory.filter(t => t.realizedPnl !== 0).map(t => t.realizedPnl);
@@ -182,21 +183,17 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             const wins = tradePnls.filter(p => p > 0).length;
             const wr = tradePnls.length > 0 ? Math.round((wins / tradePnls.length) * 100) : 0;
 
-            // Build equity curve from income history (with timestamp for filtering)
-            let cumulative = 0;
+            // Build equity curve from income history with original timestamps
+            let cumulative = totalBalance;
             const sortedIncome = [...incomeHistory].sort((a, b) => a.time - b.time);
             const curve = sortedIncome.map(i => {
                 cumulative += i.income;
-                return {
-                    time: new Date(i.time).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-                    value: cumulative,
-                    ts: i.time,
-                };
+                return { time: new Date(i.time).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: cumulative, original_ts: i.time };
             });
 
             setApiStats({ bestTrade: best, worstTrade: worst, winRate: wr, totalTrades: tradePnls.length, equityCurve: curve });
         } catch (e) { console.warn('[API STATS]', e); }
-    }, [exchanges]);
+    }, [exchanges, totalBalance]);
 
     useEffect(() => {
         fetchApiStats();
@@ -218,49 +215,47 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const bestTrade = apiStats.bestTrade !== 0 ? apiStats.bestTrade : Math.max(0, ...trades.map(t => t.pnl));
     const worstTrade = apiStats.worstTrade !== 0 ? apiStats.worstTrade : Math.min(0, ...trades.map(t => t.pnl));
 
-    // Merge API trades into displayable format
-    const mergedTrades = useMemo(() => {
-        if (apiTrades.length > 0) {
-            return apiTrades.map((t: any) => ({
-                id: t.time?.toString() || Math.random().toString(),
-                symbol: t.symbol || '',
-                side: t.side || (t.realizedPnl >= 0 ? 'SELL' : 'BUY'),
-                entryPrice: t.price || 0,
-                amount: t.qty || 0,
-                pnl: t.realizedPnl || 0,
-                status: 'CLOSED' as const,
-                timestamp: t.time ? new Date(t.time).toISOString() : new Date().toISOString(),
-                strategyName: '-',
-            }));
-        }
-        return trades;
-    }, [apiTrades, trades]);
-
-    // Filter trades by selected period
+    // Filter trades by selected period — use API trades if available, fallback to local
     const filteredTrades = useMemo(() => {
-        if (timeRange === 'ALL') return mergedTrades;
+        // Merge API trades into displayable format
+        const displayTrades = apiTrades.length > 0
+            ? apiTrades.map((t, i) => ({
+                id: `api_${i}`,
+                symbol: t.symbol,
+                side: t.pnl >= 0 ? 'SELL' as const : 'BUY' as const,
+                entryPrice: 0,
+                amount: 0,
+                pnl: t.pnl,
+                status: 'CLOSED' as const,
+                timestamp: new Date(t.time).toISOString(),
+                strategyName: '-',
+            }))
+            : trades;
+
+        if (timeRange === 'ALL') return displayTrades;
         const now = new Date();
         const cutoff = new Date();
         if (timeRange === '1H') cutoff.setHours(now.getHours() - 1);
         if (timeRange === '1D') cutoff.setDate(now.getDate() - 1);
         if (timeRange === '1W') cutoff.setDate(now.getDate() - 7);
         if (timeRange === '1M') cutoff.setMonth(now.getMonth() - 1);
-        return mergedTrades.filter(t => new Date(t.timestamp) >= cutoff);
-    }, [mergedTrades, timeRange]);
+        return displayTrades.filter(t => new Date(t.timestamp) >= cutoff);
+    }, [trades, apiTrades, timeRange]);
 
     // Filter equity curve by selected period
     const filteredEquityCurve = useMemo(() => {
-        if (apiStats.equityCurve.length === 0) return historyData.length > 0 ? historyData : sessionHistory;
-        if (timeRange === 'ALL') return apiStats.equityCurve;
+        const curve = apiStats.equityCurve;
+        if (curve.length === 0) return historyData.length > 0 ? historyData : sessionHistory;
+        if (timeRange === 'ALL') return curve;
         const now = Date.now();
         let cutoffMs = 0;
         if (timeRange === '1H') cutoffMs = now - 60 * 60 * 1000;
         if (timeRange === '1D') cutoffMs = now - 24 * 60 * 60 * 1000;
         if (timeRange === '1W') cutoffMs = now - 7 * 24 * 60 * 60 * 1000;
         if (timeRange === '1M') cutoffMs = now - 30 * 24 * 60 * 60 * 1000;
-        const filtered = apiStats.equityCurve.filter(p => p.ts >= cutoffMs);
-        return filtered.length > 0 ? filtered : apiStats.equityCurve.slice(-5);
-    }, [apiStats.equityCurve, timeRange, historyData, sessionHistory]);
+        const filtered = curve.filter(p => p.original_ts >= cutoffMs);
+        return filtered.length > 0 ? filtered : curve.slice(-5);
+    }, [apiStats.equityCurve, historyData, sessionHistory, timeRange]);
 
     // Get profile for an asset - improved lookup
     const getProfileForAsset = (symbol: string) => {
