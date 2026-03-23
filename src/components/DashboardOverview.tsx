@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock, Settings2, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory, callBinanceProxy } from '../services/exchangeService';
@@ -65,7 +65,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         });
     };
 
-    const widgetList = [
+    const defaultWidgetOrder = ['visaoGeral', 'saldoTotal', 'pnl', 'positions', 'winrate', 'bestTrade', 'worstTrade', 'dailyTarget', 'dailyBalance', 'riskMode', 'activeProfiles', 'equityCurve', 'ordersPanel'];
+
+    const widgetList: { key: string; label: string }[] = [
+        { key: 'visaoGeral', label: 'Visão Geral / Gráfico' },
+        { key: 'saldoTotal', label: 'Saldo Total' },
+        { key: 'pnl', label: 'PnL Não Realizado' },
         { key: 'positions', label: 'Posições' },
         { key: 'winrate', label: 'Win Rate' },
         { key: 'bestTrade', label: 'Melhor Trade' },
@@ -77,6 +82,35 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         { key: 'equityCurve', label: 'Curva de Patrimônio' },
         { key: 'ordersPanel', label: 'Painel de Ordens' },
     ];
+
+    const [widgetOrder, setWidgetOrder] = useState<string[]>(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('dashWidgetOrder') || '[]');
+            if (saved.length > 0) return saved;
+        } catch { }
+        return defaultWidgetOrder;
+    });
+
+    // Ensure new widgets are picked up
+    const orderedWidgets = useMemo(() => {
+        const all = defaultWidgetOrder;
+        const ordered = widgetOrder.filter(k => all.includes(k));
+        all.forEach(k => { if (!ordered.includes(k)) ordered.push(k); });
+        return ordered;
+    }, [widgetOrder]);
+
+    const moveWidget = (key: string, dir: -1 | 1) => {
+        setWidgetOrder(prev => {
+            const list = [...orderedWidgets];
+            const idx = list.indexOf(key);
+            if (idx < 0) return prev;
+            const newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= list.length) return prev;
+            [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
+            localStorage.setItem('dashWidgetOrder', JSON.stringify(list));
+            return list;
+        });
+    };
 
     const toggleHideBalance = () => {
         setHideBalance(prev => {
@@ -614,6 +648,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {selectedOrder && <OrderModal asset={selectedOrder} onClose={() => setSelectedOrder(null)} />}
 
             {/* TradingView Chart (Optional) */}
+            {isWidgetVisible('visaoGeral') && (
             <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden relative">
                 <div className="p-4 border-b border-[#2A303C] flex justify-between items-center bg-[#1A1F2E]">
                     <div className="flex items-center gap-3">
@@ -642,26 +677,41 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                 {/* Widget Config Panel */}
                 {showWidgetConfig && (
-                    <div className="p-4 border-b border-[#2A303C] bg-[#12161F]">
+                    <div className="p-4 border-b border-[#2A303C] bg-[#12161F] max-h-[60vh] overflow-auto">
                         <div className="flex items-center justify-between mb-3">
                             <h4 className="text-xs font-bold text-gray-400 uppercase">Personalizar Dashboard</h4>
                             <button onClick={() => setShowWidgetConfig(false)} className="text-gray-500 hover:text-white"><X size={14} /></button>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {widgetList.map(w => (
-                                <button
-                                    key={w.key}
-                                    onClick={() => toggleWidget(w.key)}
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                        <div className="space-y-1.5">
+                            {orderedWidgets.map((key, idx) => {
+                                const w = widgetList.find(w => w.key === key);
+                                if (!w) return null;
+                                return (
+                                    <div key={w.key} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
                                         isWidgetVisible(w.key)
-                                            ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                                            : 'bg-black/20 text-gray-500 border border-gray-700'
-                                    }`}
-                                >
-                                    {isWidgetVisible(w.key) ? <Eye size={12} /> : <EyeOff size={12} />}
-                                    {w.label}
-                                </button>
-                            ))}
+                                            ? 'bg-cyan-500/10 border border-cyan-500/20'
+                                            : 'bg-black/20 border border-gray-700/50'
+                                    }`}>
+                                        <div className="flex flex-col gap-0.5">
+                                            <button onClick={() => moveWidget(w.key, -1)} disabled={idx === 0} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors" title="Mover para cima">
+                                                <ChevronUp size={12} />
+                                            </button>
+                                            <button onClick={() => moveWidget(w.key, 1)} disabled={idx === orderedWidgets.length - 1} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors" title="Mover para baixo">
+                                                <ChevronDown size={12} />
+                                            </button>
+                                        </div>
+                                        <GripVertical size={14} className="text-gray-600 flex-shrink-0" />
+                                        <button
+                                            onClick={() => toggleWidget(w.key)}
+                                            className="flex items-center gap-2 flex-1 text-left"
+                                        >
+                                            {isWidgetVisible(w.key) ? <Eye size={12} className="text-cyan-400" /> : <EyeOff size={12} className="text-gray-500" />}
+                                            <span className={isWidgetVisible(w.key) ? 'text-cyan-400' : 'text-gray-500'}>{w.label}</span>
+                                        </button>
+                                        <span className="text-[9px] text-gray-600 font-mono">{idx + 1}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -688,15 +738,19 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     </div>
                 )}
             </div>
+            )}
 
             {/* Main Metrics - Row 1 */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {isWidgetVisible('saldoTotal') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Saldo Total</div>
                     <div className="text-2xl font-mono font-bold text-white">{hideBalance ? maskedValue : `$${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</div>
                     <div className="absolute top-3 right-3 p-2 bg-primary/10 rounded-lg text-primary"><DollarSign size={14} /></div>
                 </div>
+                )}
 
+                {isWidgetVisible('pnl') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-blue-500/30 transition-colors" onClick={() => setMetricTooltip('PnL Não Realizado é o lucro ou prejuízo das suas posições abertas. Ele muda em tempo real conforme o preço dos ativos. Só se torna "realizado" quando você fecha a posição.')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">PnL Não Realizado ⓘ</div>
                     <div className={`text-2xl font-mono font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -704,6 +758,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     </div>
                     <div className="absolute top-3 right-3 p-2 bg-blue-500/10 rounded-lg text-blue-500"><Activity size={14} /></div>
                 </div>
+                )}
 
                 {isWidgetVisible('positions') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-colors" onClick={() => setMetricTooltip('Posições são os trades (ordens) atualmente abertos na sua conta. Cada posição representa um ativo sendo negociado com alavancagem.')}>
