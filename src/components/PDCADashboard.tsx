@@ -2,7 +2,7 @@
  * PDCA Dashboard — Painel visual dos Agentes de IA integrado com Perfis do Motor
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X, Shield, Rocket, Crown, Settings, ArrowRight, Trophy } from 'lucide-react';
+import { Bot, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X, Shield, Rocket, Crown, Settings, ArrowRight, Trophy, RotateCcw } from 'lucide-react';
 import {
   AIAgent,
   getAgents,
@@ -587,13 +587,23 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         </summary>
         <div className="p-4 border-t border-card-border grid grid-cols-1 md:grid-cols-2 gap-4">
           {agents.map(agent => (
-            <div key={agent.id} className="bg-black/20 rounded-xl p-4 border border-white/5">
+            <div key={agent.id} className={`bg-black/20 rounded-xl p-4 border ${agent.active ? 'border-green-500/20' : 'border-white/5 opacity-60'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Bot size={18} className={agent.active ? 'text-green-400' : 'text-gray-600'} />
                   <span className="text-white font-bold">{agent.name}</span>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLORS[agent.phase]}`}>{agent.phase}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLORS[agent.phase]}`}>{agent.phase}</span>
+                  <button onClick={() => { resetAgent(agent.id); }} title="Resetar agente"
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-yellow-400 transition-colors">
+                    <RotateCcw size={14} />
+                  </button>
+                  <button onClick={() => { toggleAgent(agent.id); }} title={agent.active ? 'Desativar agente' : 'Ativar agente'}
+                    className={`p-1.5 rounded-lg transition-colors ${agent.active ? 'bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400' : 'bg-gray-700/50 text-gray-500 hover:bg-green-500/20 hover:text-green-400'}`}>
+                    <Power size={14} />
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-gray-500 mb-2">{agent.strategy}</p>
               <div className="grid grid-cols-4 gap-2 text-center">
