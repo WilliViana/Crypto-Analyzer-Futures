@@ -1,7 +1,7 @@
 /**
  * PDCA Dashboard — Painel visual dos Agentes de IA
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power } from 'lucide-react';
 import {
   AIAgent,
@@ -68,74 +68,80 @@ export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashb
     return unsub;
   }, []);
 
-  // Buscar trades reais da API na montagem
-  useEffect(() => {
-    const loadRealTrades = async () => {
-      const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-      if (!activeExchange) {
-        // Fallback: usar posições abertas como dados
-        if (assets.length > 0) {
-          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-            symbol: a.symbol,
-            side: a.amount > 0 ? 'BUY' : 'SELL',
-            pnl: a.unrealizedPnL,
-            time: Date.now(),
-            realizedPnl: a.unrealizedPnL,
-          }));
-          if (assetTrades.length > 0) {
-            feedRealTrades(assetTrades);
-            const stats = getRealTradeStats();
-            if (stats) setTradeStats(stats);
-          }
-        }
-        return;
-      }
-      
-      setIsLoadingTrades(true);
-      try {
-        const trades = await fetchTradeHistory(activeExchange);
-        if (trades.length > 0) {
-          feedRealTrades(trades);
+  // Refs para acessar valores atuais sem causar re-render
+  const exchangesRef = useRef(exchanges);
+  const assetsRef = useRef(assets);
+  const hasLoadedRef = useRef(false);
+  exchangesRef.current = exchanges;
+  assetsRef.current = assets;
+
+  // Função de carga de trades (reutilizável)
+  const loadRealTrades = useCallback(async (showLoading = false) => {
+    const currentExchanges = exchangesRef.current;
+    const currentAssets = assetsRef.current;
+    const activeExchange = currentExchanges.find(e => e.status === 'CONNECTED');
+
+    if (!activeExchange) {
+      // Fallback: usar posições abertas
+      if (currentAssets.length > 0) {
+        const assetTrades = currentAssets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+          symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+          pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+        }));
+        if (assetTrades.length > 0) {
+          feedRealTrades(assetTrades);
           const stats = getRealTradeStats();
           if (stats) setTradeStats(stats);
-        } else if (assets.length > 0) {
-          // API retornou vazio, usar assets
-          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-            symbol: a.symbol,
-            side: a.amount > 0 ? 'BUY' : 'SELL',
-            pnl: a.unrealizedPnL,
-            time: Date.now(),
-            realizedPnl: a.unrealizedPnL,
-          }));
-          if (assetTrades.length > 0) {
-            feedRealTrades(assetTrades);
-            const stats = getRealTradeStats();
-            if (stats) setTradeStats(stats);
-          }
         }
-      } catch (err) {
-        console.warn('[PDCA] Erro ao carregar trades reais:', err);
-        // Fallback: usar posições abertas
-        if (assets.length > 0) {
-          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-            symbol: a.symbol,
-            side: a.amount > 0 ? 'BUY' : 'SELL',
-            pnl: a.unrealizedPnL,
-            time: Date.now(),
-            realizedPnl: a.unrealizedPnL,
-          }));
-          if (assetTrades.length > 0) {
-            feedRealTrades(assetTrades);
-            const stats = getRealTradeStats();
-            if (stats) setTradeStats(stats);
-          }
-        }
-      } finally {
-        setIsLoadingTrades(false);
       }
-    };
-    loadRealTrades();
-  }, [exchanges, assets]);
+      return;
+    }
+
+    if (showLoading) setIsLoadingTrades(true);
+    try {
+      const trades = await fetchTradeHistory(activeExchange);
+      if (trades.length > 0) {
+        feedRealTrades(trades);
+        const stats = getRealTradeStats();
+        if (stats) setTradeStats(stats);
+      } else if (currentAssets.length > 0) {
+        const assetTrades = currentAssets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+          symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+          pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+        }));
+        if (assetTrades.length > 0) {
+          feedRealTrades(assetTrades);
+          const stats = getRealTradeStats();
+          if (stats) setTradeStats(stats);
+        }
+      }
+    } catch (err) {
+      console.warn('[PDCA] Erro ao carregar trades:', err);
+      if (currentAssets.length > 0) {
+        const assetTrades = currentAssets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+          symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+          pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+        }));
+        if (assetTrades.length > 0) {
+          feedRealTrades(assetTrades);
+          const stats = getRealTradeStats();
+          if (stats) setTradeStats(stats);
+        }
+      }
+    } finally {
+      setIsLoadingTrades(false);
+    }
+  }, []);
+
+  // Carregar uma vez na montagem + a cada 5 minutos
+  useEffect(() => {
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadRealTrades(true); // primeira vez mostra loading
+    }
+    const interval = setInterval(() => loadRealTrades(false), 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadRealTrades]);
 
   // Auto-análise a cada 24h
   useEffect(() => {
