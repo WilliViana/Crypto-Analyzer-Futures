@@ -431,27 +431,69 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
           {/* Leaderboard */}
           <div className="bg-surface rounded-2xl border border-card-border p-5">
             <h4 className="text-lg font-bold text-yellow-400 flex items-center gap-2 mb-4">
-              <Trophy size={20} /> Ranking de Competição
+              <Trophy size={20} /> Ranking de Competição — Quem lucra mais?
             </h4>
-            <div className="space-y-2">
-              {profileResults.sort((a, b) => b.overallScore - a.overallScore).map((r, idx) => (
-                <div key={r.profileId} className="flex items-center justify-between p-3 bg-black/20 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xl font-black ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-orange-400' : 'text-gray-500'}`}>
+            {/* Header */}
+            <div className="grid grid-cols-12 gap-2 px-3 py-2 text-[11px] text-gray-500 uppercase font-bold border-b border-white/5 mb-2">
+              <div className="col-span-3">Perfil</div>
+              <div className="col-span-2 text-center">Capital Atual</div>
+              <div className="col-span-2 text-center">Lucro / Perda</div>
+              <div className="col-span-1 text-center">WR%</div>
+              <div className="col-span-1 text-center">Melhor</div>
+              <div className="col-span-1 text-center">Pior</div>
+              <div className="col-span-2 text-center">Score</div>
+            </div>
+            <div className="space-y-1">
+              {[...profileResults].sort((a, b) => b.currentMetrics.realPnL - a.currentMetrics.realPnL).map((r, idx) => (
+                <div key={r.profileId} className={`grid grid-cols-12 gap-2 items-center p-3 rounded-xl transition-colors ${idx === 0 ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-black/20 hover:bg-white/5'}`}>
+                  {/* Perfil */}
+                  <div className="col-span-3 flex items-center gap-2">
+                    <span className={`text-lg font-black ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-orange-400' : 'text-gray-500'}`}>
                       #{idx + 1}
                     </span>
-                    {PROFILE_ICONS[r.profileId] || <Target size={20} />}
-                    <span className="text-white font-bold">{r.profileName}</span>
-                    <span className="text-gray-500 text-sm">{r.riskLevel}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`text-sm font-bold ${r.currentMetrics.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${r.currentMetrics.pnl.toFixed(2)}
-                    </span>
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${r.overallScore >= 65 ? 'bg-green-500/20 text-green-400' : r.overallScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
-                      Score: {r.overallScore}
+                    {PROFILE_ICONS[r.profileId] || <Target size={18} />}
+                    <div>
+                      <span className="text-white font-bold text-sm">{r.profileName}</span>
+                      {idx === 0 && <span className="ml-2 text-[10px] bg-yellow-500/30 text-yellow-300 px-1.5 py-0.5 rounded-full font-bold">🥇 TOP</span>}
                     </div>
-                    <span className="text-gray-400 text-sm">{r.suggestedChanges.length} ajustes</span>
+                  </div>
+                  {/* Capital Atual */}
+                  <div className="col-span-2 text-center">
+                    <span className="text-white font-bold text-sm">${r.currentMetrics.currentCapital.toFixed(2)}</span>
+                  </div>
+                  {/* Lucro / Perda */}
+                  <div className="col-span-2 text-center">
+                    <div className={`font-bold text-sm ${r.currentMetrics.realPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {r.currentMetrics.realPnL >= 0 ? '+' : ''}${r.currentMetrics.realPnL.toFixed(2)}
+                    </div>
+                    <div className={`text-[10px] ${r.currentMetrics.pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {r.currentMetrics.pnlPct >= 0 ? '+' : ''}{r.currentMetrics.pnlPct.toFixed(1)}%
+                    </div>
+                  </div>
+                  {/* Win Rate */}
+                  <div className="col-span-1 text-center">
+                    <span className={`font-bold text-sm ${r.currentMetrics.winRate >= 50 ? 'text-green-400' : r.currentMetrics.winRate > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                      {r.currentMetrics.winRate.toFixed(0)}%
+                    </span>
+                  </div>
+                  {/* Melhor Trade */}
+                  <div className="col-span-1 text-center">
+                    <span className="text-green-400 font-bold text-xs">
+                      {r.currentMetrics.bestTrade > 0 ? `+$${r.currentMetrics.bestTrade.toFixed(1)}` : '-'}
+                    </span>
+                  </div>
+                  {/* Pior Trade */}
+                  <div className="col-span-1 text-center">
+                    <span className="text-red-400 font-bold text-xs">
+                      {r.currentMetrics.worstTrade < 0 ? `-$${Math.abs(r.currentMetrics.worstTrade).toFixed(1)}` : '-'}
+                    </span>
+                  </div>
+                  {/* Score + Ajustes */}
+                  <div className="col-span-2 flex items-center justify-center gap-2">
+                    <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${r.overallScore >= 65 ? 'bg-green-500/20 text-green-400' : r.overallScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {r.overallScore}
+                    </div>
+                    <span className="text-gray-500 text-[11px]">{r.suggestedChanges.length} ajustes</span>
                   </div>
                 </div>
               ))}
@@ -476,10 +518,12 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className={`text-lg font-bold ${result.currentMetrics.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${result.currentMetrics.pnl.toFixed(2)}
+                    <div className={`text-lg font-bold ${result.currentMetrics.realPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {result.currentMetrics.realPnL >= 0 ? '+' : ''}${result.currentMetrics.realPnL.toFixed(2)}
                     </div>
-                    <div className="text-xs text-gray-500">PnL do Perfil</div>
+                    <div className={`text-xs ${result.currentMetrics.pnlPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {result.currentMetrics.pnlPct >= 0 ? '+' : ''}{result.currentMetrics.pnlPct.toFixed(1)}% • Capital: ${result.currentMetrics.currentCapital.toFixed(2)}
+                    </div>
                   </div>
                   <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${result.overallScore >= 65 ? 'bg-green-500/20 text-green-400' : result.overallScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
                     {result.overallScore}

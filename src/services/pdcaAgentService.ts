@@ -68,9 +68,14 @@ export interface ProfileAnalysisResult {
     takeProfit: number;
     confidenceThreshold: number;
     capital: number;
+    currentCapital: number;
+    realPnL: number;
+    pnlPct: number;
     pnl: number;
     winRate: number;
     trades: number;
+    bestTrade: number;
+    worstTrade: number;
   };
   suggestedChanges: ProfileChange[];
   reasoning: string[];
@@ -434,8 +439,20 @@ export function analyzeProfile(
 
   // --- SEM TRADES ---
   if (totalTrades === 0) {
-    reasoning.push(`📊 Sem trades recentes para análise. Usando posições abertas como referência.`);
-    score = 50;
+    reasoning.push(`📊 Sem trades recentes para análise. Usando dados do capital atual como referência.`);
+  }
+
+  // PnL real = currentCapital - capital original
+  const realPnL = profile.currentCapital - profile.capital;
+  const pnlPct = profile.capital > 0 ? ((profile.currentCapital - profile.capital) / profile.capital) * 100 : 0;
+  const bestTrade = pnls.length > 0 ? Math.max(...pnls) : 0;
+  const worstTrade = pnls.length > 0 ? Math.min(...pnls) : 0;
+  
+  // Ajustar score baseado no PnL REAL do perfil
+  if (realPnL > 0) {
+    score += Math.min(25, Math.round(pnlPct)); // Até +25 por lucro %
+  } else if (realPnL < 0) {
+    score -= Math.min(30, Math.round(Math.abs(pnlPct) / 2)); // Penalizar perdas
   }
 
   // Clamp score
@@ -459,9 +476,14 @@ export function analyzeProfile(
       takeProfit: profile.takeProfit,
       confidenceThreshold: profile.confidenceThreshold,
       capital: profile.capital,
+      currentCapital: profile.currentCapital,
+      realPnL,
+      pnlPct,
       pnl: profile.pnl,
-      winRate: profile.winRate,
-      trades: profile.trades,
+      winRate: winRate || profile.winRate,
+      trades: totalTrades || profile.trades,
+      bestTrade,
+      worstTrade,
     },
     suggestedChanges: changes,
     reasoning,
