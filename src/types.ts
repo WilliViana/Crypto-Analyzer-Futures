@@ -58,6 +58,8 @@ export interface StrategyProfile {
   // Risk per profile (used in 'profile' risk mode)
   profileDailyTargetPct?: number;
   profileDailyStopLossPct?: number;
+  // Priority / order for motor processing (lower = first)
+  priority?: number;
 }
 
 export interface MarketData {

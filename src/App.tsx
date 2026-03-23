@@ -24,6 +24,7 @@ import NotificationCenter from './components/NotificationCenter';
 import PDCADashboard from './components/PDCADashboard';
 import { initVPNService } from './services/vpnService';
 import { initNotificationService, getUnreadCount } from './services/notificationService';
+import { recordAgentTrade, initPDCAService } from './services/pdcaAgentService';
 
 import { fetchHistoricalCandles } from './services/marketService';
 import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy, fetchSpotBalance } from './services/exchangeService';
@@ -51,11 +52,11 @@ const DEFAULT_INDICATORS: AdvancedIndicators = {
 };
 
 const INITIAL_PROFILES_BASE: StrategyProfile[] = [
-  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false },
-  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 50, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false },
-  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 30, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 25, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
-  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true },
+  { id: StrategyType.SAFE, name: 'Seguro', description: 'Baixo Risco', icon: 'shield', color: 'blue', riskLevel: 'Low', confidenceThreshold: 80, leverage: 2, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 5, maxDrawdown: 5, workflowSteps: ['Trend Check', 'Low Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: false, useCandlePatterns: false, priority: 1 },
+  { id: StrategyType.MODERATE, name: 'Moderado', description: 'Médio Risco', icon: 'scale', color: 'yellow', riskLevel: 'Med', confidenceThreshold: 65, leverage: 5, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 50, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 5, takeProfit: 10, maxDrawdown: 10, workflowSteps: ['Trend Follow', 'RSI Check'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: false, priority: 2 },
+  { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 30, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 3 },
+  { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 25, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 4 },
+  { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 5 },
 ];
 
 export default function App() {
@@ -117,6 +118,8 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
 
   const scanIntervalRef = useRef<any>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Init services
   useEffect(() => {
@@ -370,7 +373,7 @@ export default function App() {
       try {
         const activeExchange = exchangesRef.current.find(e => e.status === 'CONNECTED');
         const pairs = selectedPairsRef.current;
-        const allProfiles = profilesRef.current;
+        const allProfiles = [...profilesRef.current].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
 
         if (!activeExchange || pairs.length === 0) {
           console.warn('[MOTOR] Sem exchange conectada ou sem pares selecionados');
@@ -458,15 +461,21 @@ export default function App() {
               // --- ENVELOPE DE CAPITAL: verifica saldo livre do perfil ---
               const profileCurrentCapital = currentProfile.currentCapital ?? currentProfile.capital;
               if (profileCurrentCapital <= 0) {
-                addLog(`SKIP [${currentProfile.name}]: Capital zerado ($${profileCurrentCapital.toFixed(2)}). Perfil desativado automaticamente.`, 'WARNING');
+                addLog(`⚠️ BANCA ZERADA [${currentProfile.name}]: Capital $${profileCurrentCapital.toFixed(2)}. Perfil desativado — adicione capital para reativar.`, 'ERROR');
+                // Auto-desativar perfil com capital zerado
+                setProfiles(prev => prev.map(p => p.id === currentProfile.id ? { ...p, active: false } : p));
                 continue;
               }
-              const freeCapital = profileCurrentCapital - (currentProfile.allocatedCapital || 0);
-              const marginRequired = currentProfile.marginPerTrade || 20;
-              if (freeCapital < marginRequired) {
-                addLog(`SKIP [${currentProfile.name}]: Saldo insuficiente. Livre: $${freeCapital.toFixed(2)} | Necessário: $${marginRequired}`, 'WARNING');
+              const allocated = currentProfile.allocatedCapital || 0;
+              const freeCapital = Math.max(0, profileCurrentCapital - allocated);
+              const desiredMargin = currentProfile.marginPerTrade || 20;
+              // CRITICAL: nunca alocar mais que o capital livre
+              const marginRequired = Math.min(desiredMargin, freeCapital);
+              if (marginRequired < 10) {
+                addLog(`SKIP [${currentProfile.name}]: Saldo insuficiente. Capital: $${profileCurrentCapital.toFixed(2)} | Alocado: $${allocated.toFixed(2)} | Livre: $${freeCapital.toFixed(2)} (mín $10)`, 'WARNING');
                 continue;
               }
+              addLog(`CAPITAL [${currentProfile.name}]: Total: $${profileCurrentCapital.toFixed(2)} | Alocado: $${allocated.toFixed(2)} | Livre: $${freeCapital.toFixed(2)} | Margem: $${marginRequired.toFixed(2)}`, 'INFO');
 
               // Check daily target
               if (dailyTargetReached) {
@@ -529,6 +538,18 @@ export default function App() {
                   try { localStorage.setItem('profileMap', JSON.stringify(profileMapRef.current)); } catch { }
                   addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)} | TP: $${tp.toFixed(2)} SL: $${sl.toFixed(2)}`, 'SUCCESS');
                   fetchRealData();
+                  // --- Integrar com Agentes PDCA ---
+                  const profileAgentMap: Record<string, string> = {
+                    'Seguro': 'agent_trend',
+                    'Moderado': 'agent_trend',
+                    'Ousado': 'agent_reversal',
+                    'Especialista': 'agent_reversal',
+                    'Alpha Predator': 'agent_scalper',
+                  };
+                  const agentId = profileAgentMap[currentProfile.name] || 'agent_trend';
+                  try {
+                    recordAgentTrade(agentId, symbol, side as 'BUY' | 'SELL', analysis.confidence, 0);
+                  } catch { /* Non-blocking */ }
                 } else {
                   openPositionsRef.current.delete(symbol);
                   // Devolve capital se falhou
@@ -609,11 +630,19 @@ export default function App() {
       }
       setProfiles(prev => prev.map(p => {
         const pnl = profilePnLMap[p.name] || 0;
-        const allocated = profileAllocMap[p.name] || 0;
+        const realAllocated = profileAllocMap[p.name] || 0;
+        const baseCapital = p.capital; // Capital base do perfil (ex: $100)
+        const newCurrentCapital = Math.max(0, baseCapital + pnl);
+        // CRITICAL: allocatedCapital NUNCA pode exceder currentCapital
+        const cappedAllocated = Math.min(realAllocated, newCurrentCapital);
+        // Log se capital zerou
+        if (newCurrentCapital <= 0 && p.active) {
+          console.warn(`[CAPITAL] ⚠️ Perfil "${p.name}" zerou a banca! Capital: $${newCurrentCapital.toFixed(2)}`);
+        }
         return {
           ...p,
-          currentCapital: Math.max(0, p.capital + pnl),
-          allocatedCapital: allocated,
+          currentCapital: newCurrentCapital,
+          allocatedCapital: cappedAllocated,
         };
       }));
 
@@ -716,7 +745,16 @@ export default function App() {
           dailyTargetReached={dailyTargetReached}
           showDailyTargetModal={showDailyTargetModal}
           setShowDailyTargetModal={setShowDailyTargetModal}
-          onContinueDay={() => { setDailyTargetReached(false); setShowDailyTargetModal(false); }}
+          onContinueDay={() => {
+            // Resetar meta: novo baseline = saldo atual (assim precisa +10% sobre o valor ATUAL)
+            const currentBalance = realPortfolio.totalBalance;
+            setDailyStartBalance(currentBalance);
+            localStorage.setItem('cap_daily_start_equity', currentBalance.toString());
+            setDailyTargetReached(false);
+            setShowDailyTargetModal(false);
+            setIsRunning(true); // Reinicia motor automaticamente
+            addLog(`🎯 Nova meta: +${dailyTargetPct}% sobre $${currentBalance.toFixed(2)}`, 'SUCCESS');
+          }}
           onEndDay={() => { setIsRunning(false); setShowDailyTargetModal(false); }}
           riskMode={riskMode}
           dailyStopLossPct={dailyStopLossPct}
@@ -737,9 +775,62 @@ export default function App() {
         const topPerformerId = profilePnL.length > 0 ? profilePnL.reduce((a, b) => a.pnl > b.pnl ? a : b).id : null;
         const hasPositivePnL = profilePnL.some(p => p.pnl > 0);
 
+        const sortedProfiles = [...profiles].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+
+        const handleMoveUp = (id: string) => {
+          setProfiles(prev => {
+            const sorted = [...prev].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+            const idx = sorted.findIndex(p => p.id === id);
+            if (idx <= 0) return prev;
+            const currentPriority = sorted[idx].priority ?? 99;
+            const abovePriority = sorted[idx - 1].priority ?? 99;
+            return prev.map(p => {
+              if (p.id === id) return { ...p, priority: abovePriority };
+              if (p.id === sorted[idx - 1].id) return { ...p, priority: currentPriority };
+              return p;
+            });
+          });
+        };
+
+        const handleMoveDown = (id: string) => {
+          setProfiles(prev => {
+            const sorted = [...prev].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+            const idx = sorted.findIndex(p => p.id === id);
+            if (idx < 0 || idx >= sorted.length - 1) return prev;
+            const currentPriority = sorted[idx].priority ?? 99;
+            const belowPriority = sorted[idx + 1].priority ?? 99;
+            return prev.map(p => {
+              if (p.id === id) return { ...p, priority: belowPriority };
+              if (p.id === sorted[idx + 1].id) return { ...p, priority: currentPriority };
+              return p;
+            });
+          });
+        };
+
+        const handleDragDrop = (dropTargetId: string) => {
+          const dragId = dragIdRef.current;
+          if (!dragId || dragId === dropTargetId) { setDragOverId(null); return; }
+          setProfiles(prev => {
+            const sorted = [...prev].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+            const dragIdx = sorted.findIndex(p => p.id === dragId);
+            const dropIdx = sorted.findIndex(p => p.id === dropTargetId);
+            if (dragIdx < 0 || dropIdx < 0) return prev;
+            // Remove dragged and insert at drop position
+            const reordered = [...sorted];
+            const [dragged] = reordered.splice(dragIdx, 1);
+            reordered.splice(dropIdx, 0, dragged);
+            // Reassign priorities sequentially
+            const idToPriority: Record<string, number> = {};
+            reordered.forEach((p, i) => { idToPriority[p.id] = i + 1; });
+            return prev.map(p => ({ ...p, priority: idToPriority[p.id] ?? p.priority }));
+          });
+          dragIdRef.current = null;
+          setDragOverId(null);
+        };
+
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-            {profiles.map(p => (
+            {sortedProfiles.map((p, idx) => (
               <StrategyCard
                 key={p.id}
                 profile={p}
@@ -749,13 +840,22 @@ export default function App() {
                 onDelete={(id) => { if (window.confirm('Deseja realmente excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }}
                 trades={trades}
                 isTopPerformer={hasPositivePnL && p.id === topPerformerId}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+                isFirst={idx === 0}
+                isLast={idx === sortedProfiles.length - 1}
+                onDragStart={(id) => { dragIdRef.current = id; }}
+                onDragOver={(id) => setDragOverId(id)}
+                onDrop={handleDragDrop}
+                isDragOver={dragOverId === p.id}
               />
             ))}
             <StrategyCard
               isAddButton={true}
               onAdd={() => {
                 const newId = `custom_${Date.now()}`;
-                setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false });
+                const maxPriority = Math.max(...profiles.map(p => p.priority ?? 0), 0);
+                setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false, priority: maxPriority + 1 });
               }}
               lang={lang}
               profile={profiles[0]}

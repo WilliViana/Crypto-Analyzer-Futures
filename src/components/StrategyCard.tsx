@@ -2,7 +2,7 @@
 import React from 'react';
 import { StrategyProfile, Language, Trade } from '../types';
 import { translations } from '../utils/translations';
-import { Shield, Scale, Rocket, Target, Zap, ArrowDown, Pencil, Plus, Info, HelpCircle, Trash2 } from 'lucide-react';
+import { Shield, Scale, Rocket, Target, Zap, ArrowDown, ArrowUp, Pencil, Plus, Info, HelpCircle, Trash2, GripVertical } from 'lucide-react';
 
 interface StrategyCardProps {
   profile: StrategyProfile;
@@ -14,6 +14,14 @@ interface StrategyCardProps {
   onAdd?: () => void;
   trades?: Trade[];
   isTopPerformer?: boolean;
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+  onDragStart?: (id: string) => void;
+  onDragOver?: (id: string) => void;
+  onDrop?: (id: string) => void;
+  isDragOver?: boolean;
 }
 
 const colorMap: Record<string, string> = {
@@ -35,8 +43,9 @@ const metricDescriptions: Record<string, string> = {
   confidence: "Nível mínimo de confiança do sinal para abrir uma ordem.",
 };
 
-const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [], isTopPerformer = false }) => {
+const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, onEdit, onToggle, onDelete, isAddButton, onAdd, trades = [], isTopPerformer = false, onMoveUp, onMoveDown, isFirst, isLast, onDragStart, onDragOver, onDrop, isDragOver }) => {
   const t = translations[lang].strategy_card;
+  const [isDragging, setIsDragging] = React.useState(false);
 
   // Calculate real win rate from trades
   const realStats = React.useMemo(() => {
@@ -93,9 +102,17 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
     after:absolute after:-top-24 after:left-1/2 after:-translate-x-1/2 after:w-32 after:h-32 after:bg-orange-500/30 after:rounded-full after:blur-3xl after:animate-pulse
   ` : '';
 
+  const dragOverStyle = isDragOver ? 'ring-2 ring-primary/50 scale-[1.02]' : '';
+  const draggingStyle = isDragging ? 'opacity-50 scale-95 rotate-1' : '';
+
   return (
     <div
-      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden ${!profile.active ? 'opacity-40 grayscale' : ''} ${fireStyles}`}
+      draggable={!!onDragStart}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setIsDragging(true); onDragStart?.(profile.id); }}
+      onDragEnd={() => setIsDragging(false)}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver?.(profile.id); }}
+      onDrop={(e) => { e.preventDefault(); setIsDragging(false); onDrop?.(profile.id); }}
+      className={`relative bg-surface rounded-2xl border ${colorMap[profile.color] || 'border-card-border'} shadow-xl p-5 flex flex-col transition-all duration-300 hover:transform hover:-translate-y-2 group overflow-hidden cursor-grab active:cursor-grabbing ${!profile.active ? 'opacity-40 grayscale' : ''} ${fireStyles} ${dragOverStyle} ${draggingStyle}`}
     >
       {/* 🔥 Top Performer Badge */}
       {isTopPerformer && profile.active && (
@@ -123,12 +140,24 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
       <div className={`absolute -top-10 -right-10 w-24 h-24 rounded-full blur-[40px] opacity-20 bg-${profile.color}-500`}></div>
 
       <div className="flex items-center justify-between mb-6">
-        <div className={`p-3 rounded-xl bg-black/40 border border-white/5`}>
-          {getIcon()}
+        <div className="flex items-center gap-2">
+          {/* Priority Badge */}
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black bg-${profile.color}-500/20 text-${profile.color}-400 border border-${profile.color}-500/30`}>
+            {profile.priority ?? '?'}
+          </div>
+          <div className={`p-3 rounded-xl bg-black/40 border border-white/5`}>
+            {getIcon()}
+          </div>
         </div>
-        <div className="text-right">
-          <h3 className="font-black text-white text-sm uppercase tracking-tighter leading-none">{profile.name}</h3>
-          <span className={`text-[9px] font-bold uppercase text-gray-500 mt-1 block`}>{profile.riskLevel} Risk</span>
+        <div className="text-right flex items-center gap-2">
+          <div>
+            <h3 className="font-black text-white text-sm uppercase tracking-tighter leading-none">{profile.name}</h3>
+            <span className={`text-[9px] font-bold uppercase text-gray-500 mt-1 block`}>{profile.riskLevel} Risk</span>
+          </div>
+          {/* Drag Handle */}
+          {onDragStart && (
+            <GripVertical size={16} className="text-gray-600 hover:text-gray-400 cursor-grab" />
+          )}
         </div>
       </div>
 
@@ -219,6 +248,28 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
           >
             <Trash2 size={12} />
           </button>
+        )}
+
+        {/* Reorder Buttons */}
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex flex-col gap-0.5 ml-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveUp?.(profile.id); }}
+              disabled={isFirst}
+              className={`p-0.5 rounded transition-all ${isFirst ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+              title="Mover para cima"
+            >
+              <ArrowUp size={12} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveDown?.(profile.id); }}
+              disabled={isLast}
+              className={`p-0.5 rounded transition-all ${isLast ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+              title="Mover para baixo"
+            >
+              <ArrowDown size={12} />
+            </button>
+          </div>
         )}
       </div>
     </div>

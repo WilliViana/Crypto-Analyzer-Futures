@@ -98,20 +98,23 @@ export const loadStrategies = async (userId: string, signal?: AbortSignal): Prom
             riskLevel: (row.risk_level || 'Medium') as any,
             confidenceThreshold: Number(row.confidence_threshold) || 50,
             leverage: Number(row.leverage) || 5,
-            capital: Number(row.capital) || 1000,
+            capital: Number(row.capital) || 100,
+            currentCapital: Number((row as any).current_capital) || Number(row.capital) || 100,
+            allocatedCapital: Number((row as any).allocated_capital) || 0,
+            marginPerTrade: Number((row as any).margin_per_trade) || 20,
             stopLoss: Number(row.stop_loss) || 2,
             takeProfit: Number(row.take_profit) || 4,
             maxDrawdown: Number(row.max_drawdown) || 10,
-            // Default values for fields not in DB yet
-            icon: 'activity',
-            color: 'blue',
+            icon: (row as any).icon || 'activity',
+            color: (row as any).color || 'blue',
             pnl: 0,
             trades: 0,
             winRate: 0,
             workflowSteps: (row as any).workflow_steps || ['Analisar Mercado', 'Verificar Indicadores', 'Executar Trade'],
             indicators: (row.settings as any)?.indicators || {},
             useDivergences: (row.settings as any)?.useDivergences || false,
-            useCandlePatterns: (row.settings as any)?.useCandlePatterns || false
+            useCandlePatterns: (row.settings as any)?.useCandlePatterns || false,
+            priority: Number((row as any).priority) || 99
         } as StrategyProfile));
     } catch (error: any) {
         if (error.name === 'AbortError') return [];
@@ -133,9 +136,16 @@ export const saveStrategy = async (userId: string, strategy: StrategyProfile): P
             confidence_threshold: strategy.confidenceThreshold,
             leverage: strategy.leverage,
             capital: strategy.capital,
+            current_capital: strategy.currentCapital ?? strategy.capital,
+            allocated_capital: strategy.allocatedCapital ?? 0,
+            margin_per_trade: strategy.marginPerTrade ?? 20,
             stop_loss: strategy.stopLoss,
             take_profit: strategy.takeProfit,
             max_drawdown: strategy.maxDrawdown,
+            icon: strategy.icon || 'activity',
+            color: strategy.color || 'blue',
+            workflow_steps: strategy.workflowSteps || [],
+            priority: strategy.priority ?? 99,
             settings: {
                 indicators: strategy.indicators,
                 useDivergences: strategy.useDivergences,

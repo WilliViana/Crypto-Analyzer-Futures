@@ -304,3 +304,59 @@ export function onAgentsChange(cb: (agents: AIAgent[]) => void): () => void {
   agentListeners.push(cb);
   return () => { agentListeners = agentListeners.filter(l => l !== cb); };
 }
+
+/**
+ * Gera sugestões de melhoria para um agente baseado no histórico
+ */
+export function getAgentSuggestions(agentId: string): string[] {
+  const agent = agents.find(a => a.id === agentId);
+  if (!agent) return [];
+  const suggestions: string[] = [];
+
+  if (agent.cycles === 0) {
+    suggestions.push('🔄 Agente sem dados ainda — aguardando primeiros trades para gerar análises.');
+    return suggestions;
+  }
+
+  // Win Rate baixo
+  if (agent.cycles >= 3 && agent.winRate < 40) {
+    suggestions.push(`📉 Win Rate baixo (${agent.winRate.toFixed(0)}%). Considere aumentar o threshold de confiança para ser mais seletivo.`);
+  }
+  if (agent.cycles >= 3 && agent.winRate > 65) {
+    suggestions.push(`📈 Win Rate alto (${agent.winRate.toFixed(0)}%)! Pode reduzir o threshold para capturar mais oportunidades.`);
+  }
+
+  // Sharpe negativo
+  if (agent.sharpeRatio < 0 && agent.cycles >= 5) {
+    suggestions.push(`⚠️ Sharpe Ratio negativo (${agent.sharpeRatio.toFixed(2)}). Reduza a alavancagem ou ajuste o Stop Loss.`);
+  }
+  if (agent.sharpeRatio > 1.5) {
+    suggestions.push(`✅ Excelente Sharpe Ratio (${agent.sharpeRatio.toFixed(2)}). Pode manter a estratégia atual.`);
+  }
+
+  // Perdas consecutivas
+  const recentResults = agent.history.slice(-5).map(h => h.checkResult);
+  const consecutiveLosses = recentResults.filter(r => r === 'LOSS').length;
+  if (consecutiveLosses >= 3) {
+    suggestions.push(`🔴 ${consecutiveLosses} perdas nas últimas 5 operações. Considere pausar este perfil e aguardar melhor momento de mercado.`);
+  }
+
+  // PnL total
+  if (agent.totalPnL < -50) {
+    suggestions.push(`💰 PnL negativo ($${agent.totalPnL.toFixed(2)}). Recomendado: diminuir marginPerTrade e usar Stop Loss mais apertado.`);
+  }
+
+  // Threshold muito alto/baixo
+  if (agent.confidenceThreshold > 85) {
+    suggestions.push(`🎯 Threshold muito alto (${agent.confidenceThreshold}%). Poucos sinais passarão. Considere reduzir para captar mais oportunidades.`);
+  }
+  if (agent.confidenceThreshold < 50) {
+    suggestions.push(`⚡ Threshold muito baixo (${agent.confidenceThreshold}%). Sinais fracos serão aceitos. Aumente para melhorar qualidade.`);
+  }
+
+  if (suggestions.length === 0) {
+    suggestions.push('✅ Agente operando dentro dos parâmetros esperados. Continue monitorando.');
+  }
+
+  return suggestions;
+}

@@ -11,6 +11,7 @@ import {
   updateAgentThreshold,
   onAgentsChange,
   initPDCAService,
+  getAgentSuggestions,
 } from '../services/pdcaAgentService';
 
 const PHASE_COLORS: Record<string, string> = {
@@ -200,6 +201,18 @@ export default function PDCADashboard() {
                     </div>
                   </div>
                 )}
+
+                {/* Sugestões de Melhoria */}
+                <div className="bg-gradient-to-r from-purple-500/5 to-cyan-500/5 rounded-lg p-3 mt-2 border border-purple-500/10">
+                  <div className="text-[10px] text-purple-400 font-bold mb-1.5 flex items-center gap-1">
+                    <Zap size={10} /> SUGESTÕES DE MELHORIA
+                  </div>
+                  {getAgentSuggestions(agent.id).map((sug, i) => (
+                    <div key={i} className="text-[10px] text-gray-300 py-0.5">
+                      {sug}
+                    </div>
+                  ))}
+                </div>
 
                 {/* Actions */}
                 <div className="flex gap-2 mt-1">
