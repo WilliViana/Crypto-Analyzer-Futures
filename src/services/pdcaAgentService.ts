@@ -360,3 +360,102 @@ export function getAgentSuggestions(agentId: string): string[] {
 
   return suggestions;
 }
+
+/**
+ * Aplica sugestões automaticamente para um agente
+ * Retorna um array de ações aplicadas
+ */
+export function applySuggestions(agentId: string): string[] {
+  const agent = agents.find(a => a.id === agentId);
+  if (!agent) return ['❌ Agente não encontrado'];
+  const applied: string[] = [];
+
+  if (agent.cycles === 0) {
+    return ['ℹ️ Sem dados para análise — aguardando primeiros trades.'];
+  }
+
+  // Win Rate baixo → aumentar threshold
+  if (agent.cycles >= 3 && agent.winRate < 40) {
+    const newThreshold = Math.min(90, agent.confidenceThreshold + 5);
+    updateAgentThreshold(agentId, newThreshold);
+    applied.push(`📉 Win Rate baixo → Threshold aumentado para ${newThreshold}%`);
+  }
+
+  // Win Rate alto → diminuir threshold
+  if (agent.cycles >= 3 && agent.winRate > 65) {
+    const newThreshold = Math.max(45, agent.confidenceThreshold - 5);
+    updateAgentThreshold(agentId, newThreshold);
+    applied.push(`📈 Win Rate alto → Threshold reduzido para ${newThreshold}%`);
+  }
+
+  // Sharpe negativo → ajustar leverage multiplier
+  if (agent.sharpeRatio < 0 && agent.cycles >= 5) {
+    agent.adaptiveParams.leverageMultiplier = Math.max(0.5, agent.adaptiveParams.leverageMultiplier - 0.2);
+    applied.push(`⚠️ Sharpe negativo → Leverage multiplier reduzido para ${agent.adaptiveParams.leverageMultiplier.toFixed(1)}x`);
+  }
+
+  // Perdas consecutivas → pausar agente
+  const recentResults = agent.history.slice(-5).map(h => h.checkResult);
+  const consecutiveLosses = recentResults.filter(r => r === 'LOSS').length;
+  if (consecutiveLosses >= 4) {
+    agent.active = false;
+    applied.push(`🔴 ${consecutiveLosses} perdas consecutivas → Agente pausado automaticamente`);
+  }
+
+  // PnL muito negativo → reduzir cooldown (esperar mais)
+  if (agent.totalPnL < -50) {
+    agent.adaptiveParams.cooldownMs = Math.min(300000, agent.adaptiveParams.cooldownMs + 30000);
+    applied.push(`💰 PnL negativo → Cooldown aumentado para ${(agent.adaptiveParams.cooldownMs / 1000).toFixed(0)}s`);
+  }
+
+  // Threshold muito alto → reduzir
+  if (agent.confidenceThreshold > 85 && agent.winRate > 50) {
+    const newThreshold = agent.confidenceThreshold - 5;
+    updateAgentThreshold(agentId, newThreshold);
+    applied.push(`🎯 Threshold alto com WR bom → Threshold reduzido para ${newThreshold}%`);
+  }
+
+  // Threshold muito baixo → aumentar
+  if (agent.confidenceThreshold < 50 && agent.winRate < 50) {
+    const newThreshold = agent.confidenceThreshold + 5;
+    updateAgentThreshold(agentId, newThreshold);
+    applied.push(`⚡ Threshold baixo com WR ruim → Threshold aumentado para ${newThreshold}%`);
+  }
+
+  if (applied.length === 0) {
+    applied.push('✅ Nenhum ajuste necessário — agente dentro dos parâmetros ideais.');
+  }
+
+  // Salvar timestamp da última análise
+  localStorage.setItem(`lastAnalysis_${agentId}`, Date.now().toString());
+  notifyAgentListeners();
+  return applied;
+}
+
+/**
+ * Aplica sugestões para TODOS os agentes ativos
+ */
+export function applyAllSuggestions(): { agentName: string; actions: string[] }[] {
+  return agents
+    .filter(a => a.active)
+    .map(a => ({ agentName: a.name, actions: applySuggestions(a.id) }));
+}
+
+/**
+ * Retorna timestamp da última análise de um agente
+ */
+export function getLastAnalysisTime(agentId: string): number | null {
+  const ts = localStorage.getItem(`lastAnalysis_${agentId}`);
+  return ts ? parseInt(ts) : null;
+}
+
+/**
+ * Getter/setter para auto-análise 24h
+ */
+export function isAutoAnalysisEnabled(): boolean {
+  return localStorage.getItem('aiAutoAnalysis') === 'true';
+}
+
+export function setAutoAnalysis(enabled: boolean): void {
+  localStorage.setItem('aiAutoAnalysis', String(enabled));
+}

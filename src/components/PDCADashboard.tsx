@@ -1,8 +1,8 @@
 /**
  * PDCA Dashboard — Painel visual dos Agentes de IA
  */
-import React, { useState, useEffect } from 'react';
-import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Settings2, Power } from 'lucide-react';
 import {
   AIAgent,
   getAgents,
@@ -12,6 +12,11 @@ import {
   onAgentsChange,
   initPDCAService,
   getAgentSuggestions,
+  applySuggestions,
+  applyAllSuggestions,
+  getLastAnalysisTime,
+  isAutoAnalysisEnabled,
+  setAutoAnalysis,
 } from '../services/pdcaAgentService';
 
 const PHASE_COLORS: Record<string, string> = {
@@ -22,17 +27,81 @@ const PHASE_COLORS: Record<string, string> = {
   IDLE: 'text-gray-400 bg-gray-500/10',
 };
 
+function timeAgo(ts: number | null): string {
+  if (!ts) return 'Nunca';
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Agora';
+  if (mins < 60) return `${mins}min atrás`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h atrás`;
+  return `${Math.floor(hrs / 24)}d atrás`;
+}
+
 export default function PDCADashboard() {
   const [agents, setAgents] = useState<AIAgent[]>(() => {
     initPDCAService();
     return getAgents();
   });
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [autoEnabled, setAutoEnabled] = useState(isAutoAnalysisEnabled());
+  const [appliedResults, setAppliedResults] = useState<Record<string, string[]>>({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [allResults, setAllResults] = useState<{ agentName: string; actions: string[] }[] | null>(null);
+  const autoTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const unsub = onAgentsChange(setAgents);
     return unsub;
   }, []);
+
+  // Auto-análise a cada 24h
+  useEffect(() => {
+    if (!autoEnabled) {
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+      return;
+    }
+
+    const checkAndRun = () => {
+      const now = Date.now();
+      const agentList = getAgents();
+      agentList.forEach(agent => {
+        const lastTs = getLastAnalysisTime(agent.id);
+        if (!lastTs || now - lastTs >= 24 * 60 * 60 * 1000) {
+          applySuggestions(agent.id);
+        }
+      });
+    };
+
+    // Check immediately on enable
+    checkAndRun();
+    // Then check every hour
+    autoTimerRef.current = setInterval(checkAndRun, 60 * 60 * 1000);
+    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
+  }, [autoEnabled]);
+
+  const handleToggleAuto = () => {
+    const next = !autoEnabled;
+    setAutoEnabled(next);
+    setAutoAnalysis(next);
+  };
+
+  const handleAnalyzeNow = () => {
+    setIsAnalyzing(true);
+    setTimeout(() => {
+      const results = applyAllSuggestions();
+      setAllResults(results);
+      setIsAnalyzing(false);
+    }, 1500); // Simular tempo de análise
+  };
+
+  const handleApplySingle = (agentId: string) => {
+    const results = applySuggestions(agentId);
+    setAppliedResults(prev => ({ ...prev, [agentId]: results }));
+    setTimeout(() => {
+      setAppliedResults(prev => { const n = { ...prev }; delete n[agentId]; return n; });
+    }, 8000);
+  };
 
   // Leaderboard
   const ranked = [...agents].filter(a => a.cycles > 0).sort((a, b) => b.totalPnL - a.totalPnL);
@@ -41,15 +110,78 @@ export default function PDCADashboard() {
     <div className="space-y-4 pb-20">
       {/* Header */}
       <div className="bg-[#151A25] border border-[#2A303C] rounded-xl p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-lg bg-purple-500/10">
-            <Brain className="text-purple-400" size={24} />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">Agentes IA — PDCA</h2>
-            <p className="text-xs text-gray-500">Plan • Do • Check • Act — Ciclo adaptativo de trading</p>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-purple-500/10">
+              <Brain className="text-purple-400" size={24} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Agentes IA — PDCA</h2>
+              <p className="text-xs text-gray-500">Plan • Do • Check • Act — Ciclo adaptativo de trading</p>
+            </div>
           </div>
         </div>
+
+        {/* Auto-Analysis Controls */}
+        <div className="bg-gradient-to-r from-purple-500/5 to-cyan-500/5 border border-purple-500/15 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap size={16} className="text-yellow-400" />
+              <span className="text-sm font-bold text-white">Análise Inteligente</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleToggleAuto}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                  autoEnabled
+                    ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                    : 'bg-gray-500/10 text-gray-500 border-gray-700'
+                }`}
+                title={autoEnabled ? 'Desativar análise automática' : 'Ativar análise automática a cada 24h'}
+              >
+                <Power size={12} />
+                Auto 24h {autoEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                onClick={handleAnalyzeNow}
+                disabled={isAnalyzing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all disabled:opacity-50"
+                title="Analisar agora e aplicar sugestões"
+              >
+                {isAnalyzing ? <RefreshCw size={12} className="animate-spin" /> : <Activity size={12} />}
+                {isAnalyzing ? 'Analisando...' : 'Analisar Agora'}
+              </button>
+            </div>
+          </div>
+          <div className="text-[10px] text-gray-500">
+            {autoEnabled
+              ? '✅ Análise automática ativa — verifica a cada 24h e aplica ajustes em todos os agentes ativos.'
+              : '⏸ Análise automática desativada — use "Analisar Agora" para rodar manualmente.'}
+          </div>
+        </div>
+
+        {/* All Results (after Analyze Now) */}
+        {allResults && (
+          <div className="bg-[#0B0E14] border border-cyan-500/20 rounded-xl p-4 mb-4 animate-fade-in">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={14} className="text-green-400" />
+                <span className="text-xs font-bold text-white">Resultado da Análise</span>
+              </div>
+              <button onClick={() => setAllResults(null)} className="text-gray-500 hover:text-white text-xs" title="Fechar">✕</button>
+            </div>
+            <div className="space-y-2">
+              {allResults.map((r, i) => (
+                <div key={i} className="border-l-2 border-cyan-500/30 pl-3 py-1">
+                  <div className="text-xs font-bold text-cyan-400 mb-0.5">{r.agentName}</div>
+                  {r.actions.map((a, j) => (
+                    <div key={j} className="text-[10px] text-gray-400">{a}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Global Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -159,6 +291,32 @@ export default function PDCADashboard() {
               </div>
             </div>
 
+            {/* Last Analysis Time */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1 text-[10px] text-gray-600">
+                <Clock size={10} />
+                Última análise: {timeAgo(getLastAnalysisTime(agent.id))}
+              </div>
+              <button
+                onClick={() => handleApplySingle(agent.id)}
+                className="flex items-center gap-1 text-[10px] font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 rounded transition-colors"
+                title="Aplicar sugestões para este agente"
+              >
+                <Zap size={10} />
+                Aplicar Ajustes
+              </button>
+            </div>
+
+            {/* Applied Results */}
+            {appliedResults[agent.id] && (
+              <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-2.5 mb-2 animate-fade-in">
+                <div className="text-[10px] font-bold text-purple-400 mb-1">Ajustes Aplicados:</div>
+                {appliedResults[agent.id].map((r, i) => (
+                  <div key={i} className="text-[10px] text-gray-300 py-0.5">{r}</div>
+                ))}
+              </div>
+            )}
+
             {/* Expandable Details */}
             <button
               onClick={() => setExpandedAgent(expandedAgent === agent.id ? null : agent.id)}
@@ -180,6 +338,7 @@ export default function PDCADashboard() {
                     value={agent.confidenceThreshold}
                     onChange={(e) => updateAgentThreshold(agent.id, parseInt(e.target.value))}
                     className="w-24 h-1 accent-cyan-400"
+                    title="Threshold de confiança"
                   />
                 </div>
 
@@ -212,6 +371,14 @@ export default function PDCADashboard() {
                       {sug}
                     </div>
                   ))}
+                  <button
+                    onClick={() => handleApplySingle(agent.id)}
+                    className="mt-2 flex items-center gap-1 text-[10px] font-bold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-1.5 rounded-lg transition-colors w-full justify-center border border-cyan-500/20"
+                    title="Aplicar todas as sugestões"
+                  >
+                    <CheckCircle size={10} />
+                    Aplicar Sugestões Automaticamente
+                  </button>
                 </div>
 
                 {/* Actions */}
@@ -219,6 +386,7 @@ export default function PDCADashboard() {
                   <button
                     onClick={() => resetAgent(agent.id)}
                     className="flex items-center gap-1 text-[10px] text-red-400 hover:bg-red-500/10 px-2 py-1 rounded"
+                    title="Resetar dados do agente"
                   >
                     <RotateCcw size={10} /> Reset
                   </button>
