@@ -234,7 +234,26 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     // Fetch stats from Binance API
     const fetchApiStats = useCallback(async () => {
         const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-        if (!activeExchange) return;
+        if (!activeExchange) {
+            // Fallback: calcular a partir dos assets (posições abertas)
+            if (assets.length > 0) {
+                const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+                if (assetPnls.length > 0) {
+                    const best = Math.max(...assetPnls);
+                    const worst = Math.min(...assetPnls);
+                    const wins = assetPnls.filter(p => p > 0).length;
+                    const wr = Math.round((wins / assetPnls.length) * 100);
+                    setApiStats(prev => ({
+                        ...prev,
+                        bestTrade: prev.bestTrade || best,
+                        worstTrade: prev.worstTrade || worst,
+                        winRate: prev.winRate || wr,
+                        totalTrades: prev.totalTrades || assetPnls.length,
+                    }));
+                }
+            }
+            return;
+        }
         try {
             const [tradeHistory, incomeHistory] = await Promise.all([
                 fetchTradeHistory(activeExchange),
@@ -260,9 +279,39 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 return { time: new Date(i.time).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), value: cumulative, original_ts: i.time };
             });
 
-            setApiStats({ bestTrade: best, worstTrade: worst, winRate: wr, totalTrades: tradePnls.length, equityCurve: curve });
-        } catch (e) { console.warn('[API STATS]', e); }
-    }, [exchanges, totalBalance]);
+            // Se API retornou dados, usar; senão fallback de assets
+            if (tradePnls.length > 0) {
+                setApiStats({ bestTrade: best, worstTrade: worst, winRate: wr, totalTrades: tradePnls.length, equityCurve: curve });
+            } else {
+                // Usar dados de posições abertas como fallback
+                const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+                const fbBest = assetPnls.length > 0 ? Math.max(...assetPnls) : 0;
+                const fbWorst = assetPnls.length > 0 ? Math.min(...assetPnls) : 0;
+                const fbWins = assetPnls.filter(p => p > 0).length;
+                const fbWr = assetPnls.length > 0 ? Math.round((fbWins / assetPnls.length) * 100) : 0;
+                setApiStats({ bestTrade: fbBest, worstTrade: fbWorst, winRate: fbWr, totalTrades: assetPnls.length, equityCurve: curve.length > 0 ? curve : [] });
+            }
+        } catch (e) {
+            console.warn('[API STATS]', e);
+            // Fallback: usar posições abertas
+            const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+            if (assetPnls.length > 0) {
+                const best = Math.max(...assetPnls);
+                const worst = Math.min(...assetPnls);
+                const wins = assetPnls.filter(p => p > 0).length;
+                const wr = Math.round((wins / assetPnls.length) * 100);
+                setApiStats(prev => ({
+                    ...prev,
+                    bestTrade: prev.bestTrade || best,
+                    worstTrade: prev.worstTrade || worst,
+                    winRate: prev.winRate || wr,
+                    totalTrades: prev.totalTrades || assetPnls.length,
+                }));
+            }
+            // Retry após 5s
+            setTimeout(fetchApiStats, 5000);
+        }
+    }, [exchanges, totalBalance, assets]);
 
     useEffect(() => {
         fetchApiStats();

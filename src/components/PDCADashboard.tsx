@@ -346,38 +346,38 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-4 gap-2 mb-3">
+            <div className="grid grid-cols-4 gap-3 mb-4 bg-[#0B0E14] rounded-lg p-3">
               <div className="text-center">
-                <div className="text-sm font-bold text-white">{agent.cycles}</div>
-                <div className="text-[9px] text-gray-600">Ciclos</div>
+                <div className="text-lg font-bold text-white">{agent.cycles}</div>
+                <div className="text-xs text-gray-500">Ciclos</div>
               </div>
               <div className="text-center">
-                <div className={`text-sm font-bold ${agent.winRate >= 50 ? 'text-green-400' : agent.winRate > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                <div className={`text-lg font-bold ${agent.winRate >= 50 ? 'text-green-400' : agent.winRate > 0 ? 'text-red-400' : 'text-gray-500'}`}>
                   {agent.winRate.toFixed(0)}%
                 </div>
-                <div className="text-[9px] text-gray-600">Win Rate</div>
+                <div className="text-xs text-gray-500">Win Rate</div>
               </div>
               <div className="text-center">
-                <div className={`text-sm font-bold ${agent.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className={`text-lg font-bold ${agent.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   ${agent.totalPnL.toFixed(2)}
                 </div>
-                <div className="text-[9px] text-gray-600">PnL</div>
+                <div className="text-xs text-gray-500">PnL</div>
               </div>
               <div className="text-center">
-                <div className="text-sm font-bold text-purple-400">{agent.sharpeRatio.toFixed(2)}</div>
-                <div className="text-[9px] text-gray-600">Sharpe</div>
+                <div className="text-lg font-bold text-purple-400">{agent.sharpeRatio.toFixed(2)}</div>
+                <div className="text-xs text-gray-500">Sharpe</div>
               </div>
             </div>
 
             {/* Last Analysis Time */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1 text-[10px] text-gray-600">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
                 <Clock size={10} />
                 Última análise: {timeAgo(getLastAnalysisTime(agent.id))}
               </div>
               <button
                 onClick={() => handleApplySingle(agent.id)}
-                className="flex items-center gap-1 text-[10px] font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 rounded transition-colors"
+                className="flex items-center gap-1.5 text-xs font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-3 py-1.5 rounded-lg transition-colors"
                 title="Aplicar sugestões para este agente"
               >
                 <Zap size={10} />
@@ -408,7 +408,7 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
               <div className="mt-2 space-y-2 border-t border-[#2A303C]/50 pt-2">
                 {/* Threshold */}
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] text-gray-500">Threshold: {agent.confidenceThreshold}%</label>
+                  <label className="text-xs text-gray-400 font-medium">Threshold: {agent.confidenceThreshold}%</label>
                   <input
                     type="range"
                     min={40}
@@ -421,7 +421,7 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
                 </div>
 
                 {/* Adaptive Params */}
-                <div className="text-[10px] text-gray-600 space-y-0.5">
+                <div className="text-xs text-gray-500 space-y-1">
                   <div>Threshold Inicial: {agent.adaptiveParams.initialThreshold}% → Atual: {agent.adaptiveParams.adjustedThreshold.toFixed(1)}%</div>
                   <div>Cooldown: {(agent.adaptiveParams.cooldownMs / 1000).toFixed(0)}s</div>
                   <div>Leverage Mult: {agent.adaptiveParams.leverageMultiplier.toFixed(1)}x</div>
@@ -430,8 +430,8 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
                 {/* Last Cycle */}
                 {agent.lastCycle && (
                   <div className="bg-[#0B0E14] rounded-lg p-2 mt-1">
-                    <div className="text-[10px] text-gray-500 font-bold">Último Trade</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">
+                    <div className="text-xs text-gray-500 font-bold">Último Trade</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
                       {agent.lastCycle.planSymbol} {agent.lastCycle.planSignal} ({agent.lastCycle.planConfidence?.toFixed(0)}%)
                       → {agent.lastCycle.checkResult === 'WIN' ? '✅ WIN' : '❌ LOSS'}
                       {agent.lastCycle.checkPnL !== undefined && ` $${agent.lastCycle.checkPnL.toFixed(2)}`}
