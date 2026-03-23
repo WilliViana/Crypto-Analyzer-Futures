@@ -231,7 +231,15 @@ export default function App() {
           });
 
           if (userData.exchanges.length > 0) setExchanges(userData.exchanges);
-          if (userData.strategies.length > 0) setProfiles(userData.strategies);
+          if (userData.strategies.length > 0) {
+            // Auto-merge: adicionar perfis padrão faltantes
+            const loadedIds = new Set(userData.strategies.map((s: any) => s.id));
+            const missingDefaults = INITIAL_PROFILES_BASE.filter(dp => !loadedIds.has(dp.id));
+            if (missingDefaults.length > 0) {
+              console.log('[SYNC] Perfis padrão faltantes restaurados:', missingDefaults.map(d => d.name));
+            }
+            setProfiles([...userData.strategies, ...missingDefaults]);
+          }
           if (userData.trades.length > 0) setTrades(userData.trades);
           if (userData.settings) {
             if (userData.settings.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
@@ -828,40 +836,84 @@ export default function App() {
           setDragOverId(null);
         };
 
+        // IDs dos perfis padrão
+        const DEFAULT_IDS = new Set(INITIAL_PROFILES_BASE.map(p => p.id));
+        const hasMissingDefaults = INITIAL_PROFILES_BASE.some(dp => !profiles.find(p => p.id === dp.id));
+
+        const handleRestoreDefaults = () => {
+          if (!window.confirm('Restaurar os 5 perfis padrões (Seguro, Moderado, Ousado, Especialista, Alpha Predator)?\n\nPerfis personalizados serão mantidos.')) return;
+          setProfiles(prev => {
+            // Manter perfis customizados
+            const customProfiles = prev.filter(p => !DEFAULT_IDS.has(p.id));
+            // Restaurar todos os padrões com configuração original
+            const maxCustomPriority = Math.max(...customProfiles.map(p => p.priority ?? 0), 0);
+            const restoredDefaults = INITIAL_PROFILES_BASE.map(dp => ({ ...dp }));
+            // Reposicionar customizados após os padrões
+            const reindexedCustom = customProfiles.map((p, i) => ({ ...p, priority: 6 + i }));
+            return [...restoredDefaults, ...reindexedCustom];
+          });
+          addLog('🔄 Perfis padrões restaurados com sucesso!', 'SUCCESS');
+        };
+
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-            {sortedProfiles.map((p, idx) => (
-              <StrategyCard
-                key={p.id}
-                profile={p}
-                lang={lang}
-                onEdit={setEditingProfile}
-                onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))}
-                onDelete={(id) => { if (window.confirm('Deseja realmente excluir este perfil?')) setProfiles(prev => prev.filter(x => x.id !== id)); }}
-                trades={trades}
-                isTopPerformer={hasPositivePnL && p.id === topPerformerId}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-                isFirst={idx === 0}
-                isLast={idx === sortedProfiles.length - 1}
-                onDragStart={(id) => { dragIdRef.current = id; }}
-                onDragOver={(id) => setDragOverId(id)}
-                onDrop={handleDragDrop}
-                isDragOver={dragOverId === p.id}
-              />
-            ))}
-            <StrategyCard
-              isAddButton={true}
-              onAdd={() => {
-                const newId = `custom_${Date.now()}`;
-                const maxPriority = Math.max(...profiles.map(p => p.priority ?? 0), 0);
-                setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false, priority: maxPriority + 1 });
-              }}
-              lang={lang}
-              profile={profiles[0]}
-              onEdit={() => { }}
-              onToggle={() => { }}
-            />
+          <div>
+            {/* Barra de ações */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                {hasMissingDefaults && (
+                  <button
+                    onClick={handleRestoreDefaults}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    🔄 Restaurar Perfis Padrões
+                  </button>
+                )}
+                <button
+                  onClick={handleRestoreDefaults}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#1E2433] hover:bg-[#252B3B] border border-[#2A303C] text-gray-400 rounded-lg text-xs transition-colors"
+                >
+                  ⟲ Resetar Padrões
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  const newId = `custom_${Date.now()}`;
+                  const maxPriority = Math.max(...profiles.map(p => p.priority ?? 0), 0);
+                  setEditingProfile({ ...INITIAL_PROFILES_BASE[0], id: newId, name: 'Novo Perfil', active: false, priority: maxPriority + 1 });
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/30 text-green-400 rounded-lg text-xs font-bold transition-colors"
+              >
+                ＋ Adicionar Perfil
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
+              {sortedProfiles.map((p, idx) => (
+                <StrategyCard
+                  key={p.id}
+                  profile={p}
+                  lang={lang}
+                  onEdit={setEditingProfile}
+                  onToggle={(id) => setProfiles(prev => prev.map(x => x.id === id ? { ...x, active: !x.active } : x))}
+                  onDelete={(id) => {
+                    const isDefault = DEFAULT_IDS.has(id);
+                    const msg = isDefault
+                      ? 'Este é um perfil padrão. Deseja restaurá-lo depois usando "Restaurar Perfis Padrões".\n\nExcluir mesmo assim?'
+                      : 'Deseja realmente excluir este perfil?';
+                    if (window.confirm(msg)) setProfiles(prev => prev.filter(x => x.id !== id));
+                  }}
+                  trades={trades}
+                  isTopPerformer={hasPositivePnL && p.id === topPerformerId}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
+                  isFirst={idx === 0}
+                  isLast={idx === sortedProfiles.length - 1}
+                  onDragStart={(id) => { dragIdRef.current = id; }}
+                  onDragOver={(id) => setDragOverId(id)}
+                  onDrop={handleDragDrop}
+                  isDragOver={dragOverId === p.id}
+                />
+              ))}
+            </div>
           </div>
         );
       case 'analysis':
