@@ -459,3 +459,142 @@ export function isAutoAnalysisEnabled(): boolean {
 export function setAutoAnalysis(enabled: boolean): void {
   localStorage.setItem('aiAutoAnalysis', String(enabled));
 }
+
+// ─── Real Trade Data Integration ───
+
+interface RealTrade {
+  symbol: string;
+  side: string;
+  pnl: number;
+  time: number;
+  realizedPnl: number;
+  qty?: number;
+  price?: number;
+  commission?: number;
+}
+
+// Armazena trades reais para análise
+let realTradeData: RealTrade[] = [];
+
+/**
+ * Alimenta os agentes com trades reais da API
+ * Deve ser chamado com dados do fetchTradeHistory
+ */
+export function feedRealTrades(trades: RealTrade[]): void {
+  realTradeData = trades.filter(t => t.realizedPnl !== 0);
+
+  if (realTradeData.length === 0) return;
+
+  // Distribui trades entre agentes baseado em estratégia
+  const now = Date.now();
+  const last7days = now - 7 * 24 * 60 * 60 * 1000;
+  const recentTrades = realTradeData.filter(t => t.time >= last7days);
+
+  if (recentTrades.length === 0) return;
+
+  // Calcula métricas globais dos trades reais
+  const totalPnL = recentTrades.reduce((s, t) => s + t.realizedPnl, 0);
+  const wins = recentTrades.filter(t => t.realizedPnl > 0).length;
+  const losses = recentTrades.filter(t => t.realizedPnl < 0).length;
+  const winRate = recentTrades.length > 0 ? (wins / recentTrades.length) * 100 : 0;
+  const pnls = recentTrades.map(t => t.realizedPnl);
+  const avgPnl = pnls.length > 0 ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0;
+  const stdDev = pnls.length > 1 ? Math.sqrt(pnls.reduce((s, p) => s + Math.pow(p - avgPnl, 2), 0) / pnls.length) : 1;
+  const sharpe = stdDev > 0 ? avgPnl / stdDev : 0;
+
+  // Distribui métricas proporcionalmente entre agentes ativos
+  const activeAgents = agents.filter(a => a.active);
+  if (activeAgents.length === 0) return;
+
+  const tradesPerAgent = Math.ceil(recentTrades.length / activeAgents.length);
+
+  activeAgents.forEach((agent, idx) => {
+    const agentTrades = recentTrades.slice(idx * tradesPerAgent, (idx + 1) * tradesPerAgent);
+    if (agentTrades.length === 0) return;
+
+    const agentWins = agentTrades.filter(t => t.realizedPnl > 0).length;
+    const agentLosses = agentTrades.filter(t => t.realizedPnl < 0).length;
+    const agentPnL = agentTrades.reduce((s, t) => s + t.realizedPnl, 0);
+    const agentWR = agentTrades.length > 0 ? (agentWins / agentTrades.length) * 100 : 0;
+    const agentPnls = agentTrades.map(t => t.realizedPnl);
+    const agentAvg = agentPnls.reduce((a, b) => a + b, 0) / agentPnls.length;
+    const agentStd = agentPnls.length > 1 ? Math.sqrt(agentPnls.reduce((s, p) => s + Math.pow(p - agentAvg, 2), 0) / agentPnls.length) : 1;
+
+    agent.cycles = agentTrades.length;
+    agent.wins = agentWins;
+    agent.losses = agentLosses;
+    agent.totalPnL = agentPnL;
+    agent.winRate = agentWR;
+    agent.sharpeRatio = agentStd > 0 ? agentAvg / agentStd : 0;
+
+    // Último trade como último ciclo
+    const lastTrade = agentTrades[agentTrades.length - 1];
+    if (lastTrade) {
+      agent.lastCycle = {
+        cycleId: `real_${lastTrade.time}`,
+        agentId: agent.id,
+        startTime: new Date(lastTrade.time),
+        endTime: new Date(lastTrade.time),
+        phase: 'CHECK',
+        planSymbol: lastTrade.symbol,
+        planSignal: lastTrade.side === 'BUY' ? 'BUY' : 'SELL',
+        planConfidence: agentWR,
+        checkResult: lastTrade.realizedPnl > 0 ? 'WIN' : 'LOSS',
+        checkPnL: lastTrade.realizedPnl,
+      };
+    }
+
+    // Phase baseada no resultado
+    agent.phase = agent.totalPnL > 0 ? 'ACT' : agent.cycles > 3 ? 'CHECK' : 'DO';
+  });
+
+  saveAgents();
+  notifyAgentListeners();
+}
+
+/**
+ * Analisa com dados reais e retorna resultado detalhado
+ */
+export function analyzeWithRealData(): { agentName: string; actions: string[] }[] {
+  if (realTradeData.length === 0) {
+    return agents.filter(a => a.active).map(a => ({
+      agentName: a.name, 
+      actions: a.cycles > 0 
+        ? applySuggestions(a.id)
+        : ['⚠️ Sem trades recebidos da API — conecte a exchange e aguarde trades reais.']
+    }));
+  }
+
+  // Feed trades reais primeiro
+  feedRealTrades(realTradeData);
+
+  // Aplica sugestões baseadas nos dados reais
+  return applyAllSuggestions();
+}
+
+/**
+ * Retorna se existem trades reais carregados
+ */
+export function hasRealTradeData(): boolean {
+  return realTradeData.length > 0;
+}
+
+/**
+ * Retorna métricas globais dos trades reais
+ */
+export function getRealTradeStats(): { totalTrades: number; totalPnL: number; winRate: number; wins: number; losses: number } | null {
+  if (realTradeData.length === 0) return null;
+  const now = Date.now();
+  const last7days = now - 7 * 24 * 60 * 60 * 1000;
+  const recent = realTradeData.filter(t => t.time >= last7days);
+  if (recent.length === 0) return null;
+  const wins = recent.filter(t => t.realizedPnl > 0).length;
+  const losses = recent.filter(t => t.realizedPnl < 0).length;
+  return {
+    totalTrades: recent.length,
+    totalPnL: recent.reduce((s, t) => s + t.realizedPnl, 0),
+    winRate: recent.length > 0 ? Math.round((wins / recent.length) * 100) : 0,
+    wins,
+    losses
+  };
+}

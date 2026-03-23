@@ -273,11 +273,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     // Calculate stats
     const activeProfiles = useMemo(() => profiles.filter(p => p.active), [profiles]);
     const winRate = useMemo(() => {
+        // Priorizar dados reais da API Binance
+        if (apiStats.winRate > 0 || apiStats.totalTrades > 0) return apiStats.winRate;
         const closedTrades = trades.filter(t => t.status === 'CLOSED');
         if (closedTrades.length === 0) return 0;
         const wins = closedTrades.filter(t => t.pnl > 0).length;
         return Math.round((wins / closedTrades.length) * 100);
-    }, [trades]);
+    }, [trades, apiStats]);
 
     const totalPnL = useMemo(() => trades.reduce((acc, t) => acc + t.pnl, 0), [trades]);
     // Use API stats if available, fallback to local trades

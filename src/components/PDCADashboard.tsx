@@ -1,8 +1,8 @@
 /**
  * PDCA Dashboard — Painel visual dos Agentes de IA
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Settings2, Power } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power } from 'lucide-react';
 import {
   AIAgent,
   getAgents,
@@ -17,7 +17,13 @@ import {
   getLastAnalysisTime,
   isAutoAnalysisEnabled,
   setAutoAnalysis,
+  feedRealTrades,
+  analyzeWithRealData,
+  hasRealTradeData,
+  getRealTradeStats,
 } from '../services/pdcaAgentService';
+import { fetchTradeHistory } from '../services/exchangeService';
+import { Exchange } from '../types';
 
 const PHASE_COLORS: Record<string, string> = {
   PLAN: 'text-blue-400 bg-blue-500/10',
@@ -38,7 +44,11 @@ function timeAgo(ts: number | null): string {
   return `${Math.floor(hrs / 24)}d atrás`;
 }
 
-export default function PDCADashboard() {
+interface PDCADashboardProps {
+  exchanges?: Exchange[];
+}
+
+export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
   const [agents, setAgents] = useState<AIAgent[]>(() => {
     initPDCAService();
     return getAgents();
@@ -48,12 +58,37 @@ export default function PDCADashboard() {
   const [appliedResults, setAppliedResults] = useState<Record<string, string[]>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [allResults, setAllResults] = useState<{ agentName: string; actions: string[] }[] | null>(null);
+  const [isLoadingTrades, setIsLoadingTrades] = useState(false);
+  const [tradeStats, setTradeStats] = useState<{ totalTrades: number; totalPnL: number; winRate: number } | null>(null);
   const autoTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const unsub = onAgentsChange(setAgents);
     return unsub;
   }, []);
+
+  // Buscar trades reais da API na montagem
+  useEffect(() => {
+    const loadRealTrades = async () => {
+      const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+      if (!activeExchange) return;
+      
+      setIsLoadingTrades(true);
+      try {
+        const trades = await fetchTradeHistory(activeExchange);
+        if (trades.length > 0) {
+          feedRealTrades(trades);
+          const stats = getRealTradeStats();
+          if (stats) setTradeStats(stats);
+        }
+      } catch (err) {
+        console.warn('[PDCA] Erro ao carregar trades reais:', err);
+      } finally {
+        setIsLoadingTrades(false);
+      }
+    };
+    loadRealTrades();
+  }, [exchanges]);
 
   // Auto-análise a cada 24h
   useEffect(() => {
@@ -62,7 +97,16 @@ export default function PDCADashboard() {
       return;
     }
 
-    const checkAndRun = () => {
+    const checkAndRun = async () => {
+      // Buscar trades reais antes de analisar
+      const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+      if (activeExchange) {
+        try {
+          const trades = await fetchTradeHistory(activeExchange);
+          if (trades.length > 0) feedRealTrades(trades);
+        } catch {}
+      }
+      
       const now = Date.now();
       const agentList = getAgents();
       agentList.forEach(agent => {
@@ -73,12 +117,10 @@ export default function PDCADashboard() {
       });
     };
 
-    // Check immediately on enable
     checkAndRun();
-    // Then check every hour
     autoTimerRef.current = setInterval(checkAndRun, 60 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoEnabled]);
+  }, [autoEnabled, exchanges]);
 
   const handleToggleAuto = () => {
     const next = !autoEnabled;
@@ -86,13 +128,28 @@ export default function PDCADashboard() {
     setAutoAnalysis(next);
   };
 
-  const handleAnalyzeNow = () => {
+  const handleAnalyzeNow = async () => {
     setIsAnalyzing(true);
-    setTimeout(() => {
-      const results = applyAllSuggestions();
-      setAllResults(results);
-      setIsAnalyzing(false);
-    }, 1500); // Simular tempo de análise
+    
+    // Buscar trades reais primeiro
+    const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+    if (activeExchange) {
+      try {
+        const trades = await fetchTradeHistory(activeExchange);
+        if (trades.length > 0) {
+          feedRealTrades(trades);
+          const stats = getRealTradeStats();
+          if (stats) setTradeStats(stats);
+        }
+      } catch (err) {
+        console.warn('[PDCA] Erro ao buscar trades:', err);
+      }
+    }
+
+    // Analisar com dados reais
+    const results = analyzeWithRealData();
+    setAllResults(results);
+    setIsAnalyzing(false);
   };
 
   const handleApplySingle = (agentId: string) => {
@@ -122,6 +179,27 @@ export default function PDCADashboard() {
           </div>
         </div>
 
+        {/* Trade Data Status */}
+        {tradeStats && (
+          <div className="bg-[#0B0E14] border border-green-500/15 rounded-lg p-3 mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={14} className="text-green-400" />
+              <span className="text-xs text-green-400 font-bold">Dados Reais Carregados</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-gray-400">
+              <span>{tradeStats.totalTrades} trades (7d)</span>
+              <span className={tradeStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}>${tradeStats.totalPnL.toFixed(2)} PnL</span>
+              <span>{tradeStats.winRate}% WR</span>
+            </div>
+          </div>
+        )}
+        {isLoadingTrades && (
+          <div className="bg-[#0B0E14] rounded-lg p-3 mb-4 flex items-center gap-2">
+            <RefreshCw size={14} className="text-cyan-400 animate-spin" />
+            <span className="text-xs text-gray-400">Carregando trades da API...</span>
+          </div>
+        )}
+
         {/* Auto-Analysis Controls */}
         <div className="bg-gradient-to-r from-purple-500/5 to-cyan-500/5 border border-purple-500/15 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
@@ -146,7 +224,7 @@ export default function PDCADashboard() {
                 onClick={handleAnalyzeNow}
                 disabled={isAnalyzing}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all disabled:opacity-50"
-                title="Analisar agora e aplicar sugestões"
+                title="Buscar trades reais e analisar agora"
               >
                 {isAnalyzing ? <RefreshCw size={12} className="animate-spin" /> : <Activity size={12} />}
                 {isAnalyzing ? 'Analisando...' : 'Analisar Agora'}
@@ -155,14 +233,14 @@ export default function PDCADashboard() {
           </div>
           <div className="text-[10px] text-gray-500">
             {autoEnabled
-              ? '✅ Análise automática ativa — verifica a cada 24h e aplica ajustes em todos os agentes ativos.'
-              : '⏸ Análise automática desativada — use "Analisar Agora" para rodar manualmente.'}
+              ? '✅ Análise automática ativa — busca trades reais da API e aplica ajustes a cada 24h.'
+              : '⏸ Análise automática desativada — use "Analisar Agora" para buscar trades e analisar.'}
           </div>
         </div>
 
         {/* All Results (after Analyze Now) */}
         {allResults && (
-          <div className="bg-[#0B0E14] border border-cyan-500/20 rounded-xl p-4 mb-4 animate-fade-in">
+          <div className="bg-[#0B0E14] border border-cyan-500/20 rounded-xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle size={14} className="text-green-400" />
@@ -309,7 +387,7 @@ export default function PDCADashboard() {
 
             {/* Applied Results */}
             {appliedResults[agent.id] && (
-              <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-2.5 mb-2 animate-fade-in">
+              <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-2.5 mb-2">
                 <div className="text-[10px] font-bold text-purple-400 mb-1">Ajustes Aplicados:</div>
                 {appliedResults[agent.id].map((r, i) => (
                   <div key={i} className="text-[10px] text-gray-300 py-0.5">{r}</div>
@@ -352,7 +430,7 @@ export default function PDCADashboard() {
                 {/* Last Cycle */}
                 {agent.lastCycle && (
                   <div className="bg-[#0B0E14] rounded-lg p-2 mt-1">
-                    <div className="text-[10px] text-gray-500 font-bold">Último Ciclo</div>
+                    <div className="text-[10px] text-gray-500 font-bold">Último Trade</div>
                     <div className="text-[10px] text-gray-400 mt-0.5">
                       {agent.lastCycle.planSymbol} {agent.lastCycle.planSignal} ({agent.lastCycle.planConfidence?.toFixed(0)}%)
                       → {agent.lastCycle.checkResult === 'WIN' ? '✅ WIN' : '❌ LOSS'}
