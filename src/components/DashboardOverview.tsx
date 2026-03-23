@@ -647,60 +647,72 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
             {selectedOrder && <OrderModal asset={selectedOrder} onClose={() => setSelectedOrder(null)} />}
 
-            {/* TradingView Chart (Optional) */}
-            {isWidgetVisible('visaoGeral') && (
-            <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden relative">
-                <div className="p-4 border-b border-[#2A303C] flex justify-between items-center bg-[#1A1F2E]">
+            {/* Dashboard Header - ALWAYS VISIBLE */}
+            <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden">
+                <div className="p-4 flex justify-between items-center bg-[#1A1F2E]">
                     <div className="flex items-center gap-3">
-                        <div className="text-white font-bold text-sm">Visão Geral: {selectedSymbol}</div>
+                        <div className="text-white font-bold text-sm">Dashboard</div>
                         <button onClick={toggleHideBalance} className="text-gray-500 hover:text-white transition-colors p-1 rounded" title={hideBalance ? 'Mostrar valores' : 'Ocultar valores'}>
                             {hideBalance ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setShowWidgetConfig(!showWidgetConfig)}
-                            className="flex items-center gap-1 px-2 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-400 border border-gray-600 transition-colors"
-                            title="Configurar widgets"
-                        >
-                            <Settings2 size={14} />
-                        </button>
-                        <button
-                            onClick={() => setShowChart(!showChart)}
-                            className="flex items-center gap-2 px-3 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-300 border border-gray-600 transition-colors"
-                        >
-                            {showChart ? <EyeOff size={14} /> : <BarChart2 size={14} />}
-                            {showChart ? 'Ocultar' : 'Gráfico'}
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => setShowWidgetConfig(!showWidgetConfig)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border transition-colors ${
+                            showWidgetConfig 
+                                ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
+                                : 'bg-[#2A303C] hover:bg-[#353C4B] text-gray-400 border-gray-600'
+                        }`}
+                        title="Configurar widgets"
+                    >
+                        <Settings2 size={14} />
+                        <span className="hidden sm:inline">Personalizar</span>
+                    </button>
                 </div>
 
-                {/* Widget Config Panel */}
+                {/* Widget Config Panel - ALWAYS ACCESSIBLE */}
                 {showWidgetConfig && (
-                    <div className="p-4 border-b border-[#2A303C] bg-[#12161F] max-h-[60vh] overflow-auto">
+                    <div className="p-4 border-t border-[#2A303C] bg-[#12161F] max-h-[60vh] overflow-auto">
                         <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-xs font-bold text-gray-400 uppercase">Personalizar Dashboard</h4>
-                            <button onClick={() => setShowWidgetConfig(false)} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                            <h4 className="text-xs font-bold text-gray-400 uppercase">Arraste para reordenar • Clique para ocultar/mostrar</h4>
+                            <button onClick={() => setShowWidgetConfig(false)} className="text-gray-500 hover:text-white" title="Fechar"><X size={14} /></button>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             {orderedWidgets.map((key, idx) => {
                                 const w = widgetList.find(w => w.key === key);
                                 if (!w) return null;
                                 return (
-                                    <div key={w.key} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                                        isWidgetVisible(w.key)
-                                            ? 'bg-cyan-500/10 border border-cyan-500/20'
-                                            : 'bg-black/20 border border-gray-700/50'
-                                    }`}>
-                                        <div className="flex flex-col gap-0.5">
-                                            <button onClick={() => moveWidget(w.key, -1)} disabled={idx === 0} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors" title="Mover para cima">
-                                                <ChevronUp size={12} />
-                                            </button>
-                                            <button onClick={() => moveWidget(w.key, 1)} disabled={idx === orderedWidgets.length - 1} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors" title="Mover para baixo">
-                                                <ChevronDown size={12} />
-                                            </button>
-                                        </div>
+                                    <div
+                                        key={w.key}
+                                        draggable
+                                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', w.key); e.currentTarget.classList.add('opacity-40'); }}
+                                        onDragEnd={(e) => { e.currentTarget.classList.remove('opacity-40'); }}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-cyan-400'); }}
+                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-cyan-400'); }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            e.currentTarget.classList.remove('border-cyan-400');
+                                            const fromKey = e.dataTransfer.getData('text/plain');
+                                            if (fromKey === w.key) return;
+                                            setWidgetOrder(prev => {
+                                                const list = [...orderedWidgets];
+                                                const fromIdx = list.indexOf(fromKey);
+                                                const toIdx = list.indexOf(w.key);
+                                                if (fromIdx < 0 || toIdx < 0) return prev;
+                                                list.splice(fromIdx, 1);
+                                                list.splice(toIdx, 0, fromKey);
+                                                localStorage.setItem('dashWidgetOrder', JSON.stringify(list));
+                                                return list;
+                                            });
+                                        }}
+                                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-bold transition-all cursor-grab active:cursor-grabbing ${
+                                            isWidgetVisible(w.key)
+                                                ? 'bg-cyan-500/10 border border-cyan-500/20'
+                                                : 'bg-black/20 border border-gray-700/50'
+                                        }`}
+                                    >
                                         <GripVertical size={14} className="text-gray-600 flex-shrink-0" />
+                                        <span className="text-[10px] text-gray-600 font-mono w-4">{idx + 1}</span>
                                         <button
                                             onClick={() => toggleWidget(w.key)}
                                             className="flex items-center gap-2 flex-1 text-left"
@@ -708,14 +720,35 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                             {isWidgetVisible(w.key) ? <Eye size={12} className="text-cyan-400" /> : <EyeOff size={12} className="text-gray-500" />}
                                             <span className={isWidgetVisible(w.key) ? 'text-cyan-400' : 'text-gray-500'}>{w.label}</span>
                                         </button>
-                                        <span className="text-[9px] text-gray-600 font-mono">{idx + 1}</span>
+                                        <div className="flex flex-col gap-0">
+                                            <button onClick={() => moveWidget(w.key, -1)} disabled={idx === 0} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors p-0.5" title="Mover para cima">
+                                                <ChevronUp size={10} />
+                                            </button>
+                                            <button onClick={() => moveWidget(w.key, 1)} disabled={idx === orderedWidgets.length - 1} className="text-gray-500 hover:text-white disabled:opacity-20 transition-colors p-0.5" title="Mover para baixo">
+                                                <ChevronDown size={10} />
+                                            </button>
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
                     </div>
                 )}
+            </div>
 
+            {/* TradingView Chart (Optional) */}
+            {isWidgetVisible('visaoGeral') && (
+            <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden relative">
+                <div className="p-3 border-b border-[#2A303C] flex justify-between items-center bg-[#1A1F2E]">
+                    <div className="text-gray-400 font-bold text-xs">Visão Geral: {selectedSymbol}</div>
+                    <button
+                        onClick={() => setShowChart(!showChart)}
+                        className="flex items-center gap-2 px-3 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-300 border border-gray-600 transition-colors"
+                    >
+                        {showChart ? <EyeOff size={14} /> : <BarChart2 size={14} />}
+                        {showChart ? 'Ocultar' : 'Gráfico'}
+                    </button>
+                </div>
                 {/* Mini CoinGecko-style static chart */}
                 {!showChart && filteredEquityCurve.length > 1 && (
                     <div className="h-[80px] w-full px-4 py-2">
