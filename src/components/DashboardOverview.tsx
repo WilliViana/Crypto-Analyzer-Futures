@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory, callBinanceProxy } from '../services/exchangeService';
@@ -51,6 +51,32 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
     const [livePrice, setLivePrice] = useState<number | null>(null);
     const [hideBalance, setHideBalance] = useState(() => localStorage.getItem('hideBalance') === 'true');
+    const [showWidgetConfig, setShowWidgetConfig] = useState(false);
+    const [widgetConfig, setWidgetConfig] = useState<Record<string, boolean>>(() => {
+        try { return JSON.parse(localStorage.getItem('dashWidgets') || '{}'); } catch { return {}; }
+    });
+
+    const isWidgetVisible = (key: string) => widgetConfig[key] !== false; // default visible
+    const toggleWidget = (key: string) => {
+        setWidgetConfig(prev => {
+            const next = { ...prev, [key]: !isWidgetVisible(key) };
+            localStorage.setItem('dashWidgets', JSON.stringify(next));
+            return next;
+        });
+    };
+
+    const widgetList = [
+        { key: 'positions', label: 'Posições' },
+        { key: 'winrate', label: 'Win Rate' },
+        { key: 'bestTrade', label: 'Melhor Trade' },
+        { key: 'worstTrade', label: 'Pior Trade' },
+        { key: 'dailyTarget', label: 'Meta Diária' },
+        { key: 'dailyBalance', label: 'Saldo do Dia' },
+        { key: 'riskMode', label: 'Modo de Risco' },
+        { key: 'activeProfiles', label: 'Perfis Ativos' },
+        { key: 'equityCurve', label: 'Curva de Patrimônio' },
+        { key: 'ordersPanel', label: 'Painel de Ordens' },
+    ];
 
     const toggleHideBalance = () => {
         setHideBalance(prev => {
@@ -596,14 +622,50 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             {hideBalance ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                     </div>
-                    <button
-                        onClick={() => setShowChart(!showChart)}
-                        className="flex items-center gap-2 px-3 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-300 border border-gray-600 transition-colors"
-                    >
-                        {showChart ? <EyeOff size={14} /> : <BarChart2 size={14} />}
-                        {showChart ? 'Ocultar Gráfico' : 'Ver Gráfico'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowWidgetConfig(!showWidgetConfig)}
+                            className="flex items-center gap-1 px-2 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-400 border border-gray-600 transition-colors"
+                            title="Configurar widgets"
+                        >
+                            <Settings2 size={14} />
+                        </button>
+                        <button
+                            onClick={() => setShowChart(!showChart)}
+                            className="flex items-center gap-2 px-3 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-300 border border-gray-600 transition-colors"
+                        >
+                            {showChart ? <EyeOff size={14} /> : <BarChart2 size={14} />}
+                            {showChart ? 'Ocultar' : 'Gráfico'}
+                        </button>
+                    </div>
                 </div>
+
+                {/* Widget Config Panel */}
+                {showWidgetConfig && (
+                    <div className="p-4 border-b border-[#2A303C] bg-[#12161F]">
+                        <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase">Personalizar Dashboard</h4>
+                            <button onClick={() => setShowWidgetConfig(false)} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {widgetList.map(w => (
+                                <button
+                                    key={w.key}
+                                    onClick={() => toggleWidget(w.key)}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                                        isWidgetVisible(w.key)
+                                            ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                                            : 'bg-black/20 text-gray-500 border border-gray-700'
+                                    }`}
+                                >
+                                    {isWidgetVisible(w.key) ? <Eye size={12} /> : <EyeOff size={12} />}
+                                    {w.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Mini CoinGecko-style static chart */}
                 {!showChart && filteredEquityCurve.length > 1 && (
                     <div className="h-[80px] w-full px-4 py-2">
@@ -643,34 +705,44 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <div className="absolute top-3 right-3 p-2 bg-blue-500/10 rounded-lg text-blue-500"><Activity size={14} /></div>
                 </div>
 
+                {isWidgetVisible('positions') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-colors" onClick={() => setMetricTooltip('Posições são os trades (ordens) atualmente abertos na sua conta. Cada posição representa um ativo sendo negociado com alavancagem.')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Posições ⓘ</div>
                     <div className="text-2xl font-mono font-bold text-white">{assets.length}</div>
                     <div className="absolute top-3 right-3 p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Layers size={14} /></div>
                 </div>
+                )}
 
+                {isWidgetVisible('winrate') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-purple-500/30 transition-colors" onClick={() => setMetricTooltip('Win Rate é a porcentagem de trades lucrativos em relação ao total de trades realizados. Ex: 60% significa que de cada 10 trades, 6 foram positivos.')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Win Rate ⓘ</div>
                     <div className="text-2xl font-mono font-bold text-white">{winRate}%</div>
                     <div className="absolute top-3 right-3 p-2 bg-purple-500/10 rounded-lg text-purple-500"><PieChart size={14} /></div>
                 </div>
+                )}
 
+                {isWidgetVisible('bestTrade') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-green-500/30 transition-colors" onClick={() => setTradeDetailModal('best')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Melhor Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-green-400">+${bestTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp size={14} /></div>
                 </div>
+                )}
 
+                {isWidgetVisible('worstTrade') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-red-500/30 transition-colors" onClick={() => setTradeDetailModal('worst')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Pior Trade <span className="text-[8px] text-gray-600 normal-case">({apiStats.totalTrades > 0 ? `${apiStats.totalTrades} trades` : 'últimos 500'})</span></div>
                     <div className="text-2xl font-mono font-bold text-red-400">${worstTrade.toFixed(2)}</div>
                     <div className="absolute top-3 right-3 p-2 bg-red-500/10 rounded-lg text-red-500"><TrendingDown size={14} /></div>
                 </div>
+                )}
             </div>
 
             {/* Meta Diária + Capital por Perfil */}
+            {(isWidgetVisible('dailyTarget') || isWidgetVisible('dailyBalance')) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Meta Diária Card */}
+                {isWidgetVisible('dailyTarget') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -716,8 +788,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         );
                     })()}
                 </div>
+                )}
 
                 {/* Saldo Inicial do Dia */}
+                {isWidgetVisible('dailyBalance') && (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -754,9 +828,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         </div>
                     </div>
                 </div>
+                )}
             </div>
+            )}
 
             {/* Risk Mode Card */}
+            {isWidgetVisible('riskMode') && (
             <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -802,8 +879,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     </div>
                 )}
             </div>
+            )}
 
             {/* Active Profiles with Capital */}
+            {isWidgetVisible('activeProfiles') && (
             <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -880,50 +959,107 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     })()}
                 </div>
             </div>
+            )}
 
             {/* Charts + Orders */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Equity Curve */}
-                <div className="lg:col-span-2 bg-surface border border-card-border rounded-xl p-6 shadow-lg flex flex-col h-[350px]">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase"><TrendingUp size={16} className="text-primary" /> Curva de Patrimônio</h3>
-                        <div className="flex gap-1 bg-black/20 p-1 rounded-lg">
+                {/* Equity Curve - CoinGecko Style */}
+                {isWidgetVisible('equityCurve') && (
+                <div className="lg:col-span-2 bg-surface border border-card-border rounded-xl shadow-lg flex flex-col overflow-hidden">
+                    {/* CoinGecko-style header with price + change */}
+                    <div className="p-4 pb-2">
+                        <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Patrimônio</div>
+                        <div className="flex items-end gap-3 mb-2">
+                            <span className="text-2xl font-mono font-bold text-white">
+                                {hideBalance ? maskedValue : `$${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+                            </span>
+                            {filteredEquityCurve.length > 1 && (() => {
+                                const first = filteredEquityCurve[0]?.value || 0;
+                                const last = filteredEquityCurve[filteredEquityCurve.length - 1]?.value || 0;
+                                const diff = last - first;
+                                const pct = first > 0 ? ((diff / first) * 100) : 0;
+                                const isUp = diff >= 0;
+                                return (
+                                    <span className={`text-sm font-bold flex items-center gap-0.5 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                                        {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                        {isUp ? '+' : ''}{pct.toFixed(2)}%
+                                    </span>
+                                );
+                            })()}
+                        </div>
+                        {/* Period buttons */}
+                        <div className="flex gap-1 bg-black/20 p-1 rounded-lg w-fit">
                             {['1H', '1D', '1W', '1M', 'ALL'].map((range) => (
                                 <button
                                     key={range}
                                     onClick={() => setTimeRange(range as any)}
-                                    className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${timeRange === range ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded transition-colors ${timeRange === range ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
                                 >
-                                    {range}
+                                    {range === '1H' ? '1h' : range === '1D' ? '24h' : range === '1W' ? '7d' : range === '1M' ? '1M' : 'Máx'}
                                 </button>
                             ))}
                         </div>
                     </div>
 
-                    <div className="flex-1 min-h-0 w-full">
+                    {/* Chart */}
+                    <div className="flex-1 min-h-0 w-full h-[220px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={filteredEquityCurve}>
+                            <AreaChart data={filteredEquityCurve} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                                 <defs>
-                                    <linearGradient id="colorEq" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
+                                    <linearGradient id="colorEqCg" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={filteredEquityCurve.length > 1 && filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'} stopOpacity={0.15} />
+                                        <stop offset="95%" stopColor={filteredEquityCurve.length > 1 && filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2A303C" vertical={false} />
-                                <XAxis dataKey="time" tick={{ fill: '#6B7280', fontSize: 10 }} minTickGap={30} />
-                                <YAxis domain={['auto', 'auto']} tick={{ fill: '#6B7280', fontSize: 10 }} width={40} />
+                                <XAxis dataKey="time" tick={{ fill: '#6B7280', fontSize: 9 }} minTickGap={50} axisLine={false} tickLine={false} />
+                                <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: '#6B7280', fontSize: 9 }} width={50} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#151A25', borderColor: '#2A303C', fontSize: '12px' }}
+                                    contentStyle={{ backgroundColor: '#151A25', borderColor: '#2A303C', fontSize: '12px', borderRadius: '8px' }}
                                     labelStyle={{ color: '#9CA3AF' }}
-                                    formatter={(value: any) => [`$${value.toLocaleString()}`, 'Saldo']}
+                                    formatter={(value: any) => [`$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`, 'Saldo']}
                                 />
-                                <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#colorEq)" animationDuration={500} />
+                                <Area
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke={filteredEquityCurve.length > 1 && filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'}
+                                    strokeWidth={2}
+                                    fill="url(#colorEqCg)"
+                                    dot={false}
+                                    animationDuration={500}
+                                />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
+
+                    {/* CoinGecko-style stats below chart */}
+                    {filteredEquityCurve.length > 1 && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 pt-2 border-t border-[#2A303C]">
+                            <div>
+                                <div className="text-[9px] text-gray-500 uppercase">Mínimo ({timeRange === '1H' ? '1h' : timeRange === '1D' ? '24h' : timeRange === '1W' ? '7d' : timeRange === '1M' ? '1M' : 'Total'})</div>
+                                <div className="text-xs font-mono font-bold text-white">${Math.min(...filteredEquityCurve.map(p => p.value)).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                            </div>
+                            <div>
+                                <div className="text-[9px] text-gray-500 uppercase">Máximo</div>
+                                <div className="text-xs font-mono font-bold text-white">${Math.max(...filteredEquityCurve.map(p => p.value)).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                            </div>
+                            <div>
+                                <div className="text-[9px] text-gray-500 uppercase">Variação</div>
+                                {(() => {
+                                    const diff = (filteredEquityCurve[filteredEquityCurve.length - 1]?.value || 0) - (filteredEquityCurve[0]?.value || 0);
+                                    return <div className={`text-xs font-mono font-bold ${diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}${diff.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>;
+                                })()}
+                            </div>
+                            <div>
+                                <div className="text-[9px] text-gray-500 uppercase">Pontos</div>
+                                <div className="text-xs font-mono font-bold text-white">{filteredEquityCurve.length}</div>
+                            </div>
+                        </div>
+                    )}
                 </div>
+                )}
 
                 {/* Orders Panel */}
+                {isWidgetVisible('ordersPanel') && (
                 <div className="bg-surface border border-card-border rounded-xl shadow-lg flex flex-col h-[350px] overflow-hidden">
                     {/* Tabs */}
                     <div className="flex border-b border-[#2A303C]">
@@ -1039,6 +1175,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         </div>
                     )}
                 </div>
+                )}
             </div>
 
             {/* Trade History moved to dedicated History tab */}
