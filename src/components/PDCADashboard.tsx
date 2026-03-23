@@ -1,8 +1,8 @@
 /**
- * PDCA Dashboard — Painel visual dos Agentes de IA
+ * PDCA Dashboard — Painel visual dos Agentes de IA integrado com Perfis do Motor
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Play, Pause, RotateCcw, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X } from 'lucide-react';
+import { Bot, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X, Shield, Rocket, Crown, Settings, ArrowRight, Trophy } from 'lucide-react';
 import {
   AIAgent,
   getAgents,
@@ -13,17 +13,20 @@ import {
   initPDCAService,
   getAgentSuggestions,
   applySuggestions,
-  applyAllSuggestions,
   getLastAnalysisTime,
   isAutoAnalysisEnabled,
   setAutoAnalysis,
   feedRealTrades,
-  analyzeWithRealData,
   hasRealTradeData,
   getRealTradeStats,
+  getRealTrades,
+  analyzeAllProfiles,
+  applyProfileChanges,
+  ProfileAnalysisResult,
+  ProfileChange,
 } from '../services/pdcaAgentService';
 import { fetchTradeHistory } from '../services/exchangeService';
-import { Exchange } from '../types';
+import { Exchange, StrategyProfile } from '../types';
 
 const PHASE_COLORS: Record<string, string> = {
   PLAN: 'text-blue-400 bg-blue-500/10',
@@ -31,6 +34,22 @@ const PHASE_COLORS: Record<string, string> = {
   CHECK: 'text-purple-400 bg-purple-500/10',
   ACT: 'text-green-400 bg-green-500/10',
   IDLE: 'text-gray-400 bg-gray-500/10',
+};
+
+const PROFILE_ICONS: Record<string, React.ReactNode> = {
+  safe: <Shield size={20} className="text-blue-400" />,
+  moderate: <Target size={20} className="text-yellow-400" />,
+  bold: <Rocket size={20} className="text-orange-400" />,
+  specialist: <Brain size={20} className="text-purple-400" />,
+  alpha: <Zap size={20} className="text-red-400" />,
+};
+
+const PROFILE_COLORS: Record<string, string> = {
+  safe: 'border-blue-500/30 bg-blue-500/5',
+  moderate: 'border-yellow-500/30 bg-yellow-500/5',
+  bold: 'border-orange-500/30 bg-orange-500/5',
+  specialist: 'border-purple-500/30 bg-purple-500/5',
+  alpha: 'border-red-500/30 bg-red-500/5',
 };
 
 function timeAgo(ts: number | null): string {
@@ -47,36 +66,37 @@ function timeAgo(ts: number | null): string {
 interface PDCADashboardProps {
   exchanges?: Exchange[];
   assets?: { symbol: string; amount: number; price: number; value: number; unrealizedPnL: number; allocation?: number; initialMargin?: number }[];
+  profiles?: StrategyProfile[];
+  setProfiles?: (fn: (prev: StrategyProfile[]) => StrategyProfile[]) => void;
 }
 
-export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashboardProps) {
+export default function PDCADashboard({ exchanges = [], assets = [], profiles = [], setProfiles }: PDCADashboardProps) {
   const [agents, setAgents] = useState<AIAgent[]>(() => {
     initPDCAService();
     return getAgents();
   });
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [autoEnabled, setAutoEnabled] = useState(isAutoAnalysisEnabled());
-  const [appliedResults, setAppliedResults] = useState<Record<string, string[]>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [allResults, setAllResults] = useState<{ agentName: string; actions: string[] }[] | null>(null);
-  const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set());
   const [isLoadingTrades, setIsLoadingTrades] = useState(false);
   const [tradeStats, setTradeStats] = useState<{ totalTrades: number; totalPnL: number; winRate: number } | null>(null);
   const autoTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Profile analysis state
+  const [profileResults, setProfileResults] = useState<ProfileAnalysisResult[] | null>(null);
+  const [expandedProfiles, setExpandedProfiles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsub = onAgentsChange(setAgents);
     return unsub;
   }, []);
 
-  // Refs para acessar valores atuais sem causar re-render
   const exchangesRef = useRef(exchanges);
   const assetsRef = useRef(assets);
   const hasLoadedRef = useRef(false);
   exchangesRef.current = exchanges;
   assetsRef.current = assets;
 
-  // Função de carga de trades (reutilizável)
   const loadRealTrades = useCallback(async (showLoading = false) => {
     const currentExchanges = exchangesRef.current;
     const currentAssets = assetsRef.current;
@@ -117,23 +137,11 @@ export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashb
       }
     } catch (err) {
       console.warn('[PDCA] Erro ao carregar trades:', err);
-      if (currentAssets.length > 0) {
-        const assetTrades = currentAssets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-          symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
-          pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
-        }));
-        if (assetTrades.length > 0) {
-          feedRealTrades(assetTrades);
-          const stats = getRealTradeStats();
-          if (stats) setTradeStats(stats);
-        }
-      }
     } finally {
       setIsLoadingTrades(false);
     }
   }, []);
 
-  // Carregar uma vez na montagem + a cada 5 minutos
   useEffect(() => {
     if (!hasLoadedRef.current) {
       hasLoadedRef.current = true;
@@ -143,14 +151,19 @@ export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashb
     return () => clearInterval(interval);
   }, [loadRealTrades]);
 
-  // Auto-análise a cada 24h
+  // Auto-análise a cada 24h: aplica nos perfis diretamente
   useEffect(() => {
-    if (!autoEnabled) {
+    if (!autoEnabled || !setProfiles || profiles.length === 0) {
       if (autoTimerRef.current) clearInterval(autoTimerRef.current);
       return;
     }
 
     const checkAndRun = async () => {
+      const lastAutoRun = localStorage.getItem('pdca_last_auto_run');
+      const now = Date.now();
+      if (lastAutoRun && (now - parseInt(lastAutoRun)) < 24 * 60 * 60 * 1000) return;
+
+      // Carregar trades reais
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
       if (activeExchange) {
         try {
@@ -158,21 +171,42 @@ export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashb
           if (trades.length > 0) feedRealTrades(trades);
         } catch {}
       }
+
+      // Analisar e aplicar em todos os perfis
+      const realTrades = getRealTrades();
+      const tradesByProfile: Record<string, any[]> = {};
+      const activeProfiles = profiles.filter(p => p.active);
+
+      // Distribuir trades entre perfis ativos
+      if (realTrades.length > 0 && activeProfiles.length > 0) {
+        const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
+        activeProfiles.forEach((profile, idx) => {
+          tradesByProfile[profile.id] = realTrades
+            .slice(idx * tradesPerProfile, (idx + 1) * tradesPerProfile)
+            .map(t => ({ pnl: t.realizedPnl, symbol: t.symbol, side: t.side, time: t.time }));
+        });
+      }
+
+      const results = analyzeAllProfiles(profiles, tradesByProfile);
       
-      const now = Date.now();
-      const agentList = getAgents();
-      agentList.forEach(agent => {
-        const lastTs = getLastAnalysisTime(agent.id);
-        if (!lastTs || now - lastTs >= 24 * 60 * 60 * 1000) {
-          applySuggestions(agent.id);
+      // Aplicar TODOS ajustes automaticamente
+      for (const result of results) {
+        if (result.suggestedChanges.length > 0) {
+          const { updatedProfile } = applyProfileChanges(
+            profiles.find(p => p.id === result.profileId)!,
+            result.suggestedChanges
+          );
+          setProfiles(prev => prev.map(p => p.id === result.profileId ? { ...p, ...updatedProfile } : p));
         }
-      });
+      }
+
+      localStorage.setItem('pdca_last_auto_run', now.toString());
     };
 
     checkAndRun();
     autoTimerRef.current = setInterval(checkAndRun, 60 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoEnabled, exchanges]);
+  }, [autoEnabled, exchanges, profiles, setProfiles]);
 
   const handleToggleAuto = () => {
     const next = !autoEnabled;
@@ -182,492 +216,408 @@ export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashb
 
   const handleAnalyzeNow = async () => {
     setIsAnalyzing(true);
-    
-    const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-    if (activeExchange) {
-      try {
-        const trades = await fetchTradeHistory(activeExchange);
-        if (trades.length > 0) {
-          feedRealTrades(trades);
-          const stats = getRealTradeStats();
-          if (stats) setTradeStats(stats);
-        } else if (assets.length > 0) {
-          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-            symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
-            pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
-          }));
-          if (assetTrades.length > 0) feedRealTrades(assetTrades);
-        }
-      } catch (err) {
-        console.warn('[PDCA] Erro ao buscar trades:', err);
-        if (assets.length > 0) {
-          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-            symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
-            pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
-          }));
-          if (assetTrades.length > 0) feedRealTrades(assetTrades);
-        }
-      }
-    } else if (assets.length > 0) {
-      const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
-        symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
-        pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
-      }));
-      if (assetTrades.length > 0) feedRealTrades(assetTrades);
-    }
+    try {
+      await loadRealTrades(false);
 
-    const results = analyzeWithRealData();
-    setAllResults(results);
-    // Selecionar todas as ações por padrão
-    if (results) {
-      const allActionKeys = new Set<string>();
-      results.forEach((r, ri) => r.actions.forEach((_, ai) => allActionKeys.add(`${ri}-${ai}`)));
-      setSelectedActions(allActionKeys);
+      const realTrades = getRealTrades();
+      const tradesByProfile: Record<string, any[]> = {};
+      const activeProfiles = profiles.filter(p => p.active);
+
+      if (realTrades.length > 0 && activeProfiles.length > 0) {
+        const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
+        activeProfiles.forEach((profile, idx) => {
+          tradesByProfile[profile.id] = realTrades
+            .slice(idx * tradesPerProfile, (idx + 1) * tradesPerProfile)
+            .map(t => ({ pnl: t.realizedPnl, symbol: t.symbol, side: t.side, time: t.time }));
+        });
+      } else if (assets.length > 0 && activeProfiles.length > 0) {
+        const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+          pnl: a.unrealizedPnL, symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL', time: Date.now(),
+        }));
+        const tradesPerProfile = Math.ceil(assetTrades.length / activeProfiles.length);
+        activeProfiles.forEach((profile, idx) => {
+          tradesByProfile[profile.id] = assetTrades.slice(idx * tradesPerProfile, (idx + 1) * tradesPerProfile);
+        });
+      }
+
+      const results = analyzeAllProfiles(profiles, tradesByProfile);
+      setProfileResults(results);
+      setExpandedProfiles(new Set(results.map(r => r.profileId)));
+    } catch (err) {
+      console.error('[PDCA] Erro na análise:', err);
+    } finally {
+      setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
+  };
+
+  const handleApplyProfileChanges = (result: ProfileAnalysisResult) => {
+    if (!setProfiles) return;
+    const profile = profiles.find(p => p.id === result.profileId);
+    if (!profile) return;
+
+    const { updatedProfile, appliedChanges } = applyProfileChanges(profile, result.suggestedChanges);
+    setProfiles(prev => prev.map(p => p.id === result.profileId ? { ...p, ...updatedProfile } : p));
+    
+    // Atualizar resultado para marcar como aplicado
+    setProfileResults(prev => prev?.map(r => r.profileId === result.profileId
+      ? { ...r, suggestedChanges: r.suggestedChanges.map(c => ({ ...c, selected: false })), reasoning: [...r.reasoning, '✅ Ajustes aplicados com sucesso!'] }
+      : r
+    ) || null);
   };
 
   const handleApplyAll = () => {
-    const results = applyAllSuggestions();
-    setAllResults(results);
-    if (results) {
-      const allActionKeys = new Set<string>();
-      results.forEach((r, ri) => r.actions.forEach((_, ai) => allActionKeys.add(`${ri}-${ai}`)));
-      setSelectedActions(allActionKeys);
+    if (!setProfiles || !profileResults) return;
+    for (const result of profileResults) {
+      if (result.suggestedChanges.length > 0) {
+        const profile = profiles.find(p => p.id === result.profileId);
+        if (!profile) continue;
+        const { updatedProfile } = applyProfileChanges(profile, result.suggestedChanges);
+        setProfiles(prev => prev.map(p => p.id === result.profileId ? { ...p, ...updatedProfile } : p));
+      }
     }
+    setProfileResults(prev => prev?.map(r => ({
+      ...r,
+      suggestedChanges: r.suggestedChanges.map(c => ({ ...c, selected: false })),
+      reasoning: [...r.reasoning, '✅ Todos os ajustes aplicados!'],
+    })) || null);
   };
 
-  const handleApplySingle = (agentId: string) => {
-    const results = applySuggestions(agentId);
-    setAppliedResults(prev => ({ ...prev, [agentId]: results }));
-    setTimeout(() => {
-      setAppliedResults(prev => { const n = { ...prev }; delete n[agentId]; return n; });
-    }, 8000);
+  const toggleProfileChange = (profileId: string, field: string) => {
+    setProfileResults(prev => prev?.map(r => r.profileId === profileId
+      ? { ...r, suggestedChanges: r.suggestedChanges.map(c => c.field === field ? { ...c, selected: !c.selected } : c) }
+      : r
+    ) || null);
   };
 
-  const toggleActionSelection = (key: string) => {
-    setSelectedActions(prev => {
+  const toggleExpandProfile = (id: string) => {
+    setExpandedProfiles(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
 
-  const toggleExpanded = (agentId: string) => {
-    setExpandedAgents(prev => {
-      const next = new Set(prev);
-      if (next.has(agentId)) next.delete(agentId);
-      else next.add(agentId);
-      return next;
-    });
-  };
-
-  // Leaderboard
-  const ranked = [...agents].filter(a => a.cycles > 0).sort((a, b) => b.totalPnL - a.totalPnL);
+  const activeProfilesCount = profiles.filter(p => p.active).length;
+  const totalChanges = profileResults?.reduce((s, r) => s + r.suggestedChanges.filter(c => c.selected).length, 0) || 0;
 
   return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-6 pb-16 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="bg-[#151A25] border border-[#2A303C] rounded-xl p-6">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-purple-500/10">
-              <Brain className="text-purple-400" size={28} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">Agentes IA — PDCA</h2>
-              <p className="text-sm text-gray-400 mt-1">Plan • Do • Check • Act — Ciclo adaptativo de trading</p>
-            </div>
-          </div>
-        </div>
+      <div className="text-center">
+        <h2 className="text-3xl font-black text-white flex items-center justify-center gap-3">
+          <Brain className="text-primary" size={32} /> Agentes IA — PDCA
+        </h2>
+        <p className="text-gray-400 mt-1">Plan • Do • Check • Act — Otimização inteligente dos perfis de investimento</p>
+      </div>
 
-        {/* Explicação simples */}
-        <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/15 rounded-xl p-4 mb-5">
-          <div className="flex items-start gap-3">
-            <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
-            <div className="text-sm text-gray-300 leading-relaxed">
-              <p className="font-bold text-blue-400 mb-2">💡 Como funciona?</p>
-              <p className="mb-2">
-                Os <strong>Agentes IA</strong> analisam seus trades automaticamente e sugerem melhorias. 
-                É como ter um consultor que olha seus resultados e diz: <em>"você está arriscando demais, diminua a alavancagem"</em> 
-                ou <em>"suas operações estão boas, continue assim!"</em>.
-              </p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                <div className="bg-blue-500/10 rounded-lg p-2 text-center">
-                  <div className="text-blue-400 font-bold text-sm">📋 Plan</div>
-                  <div className="text-xs text-gray-400 mt-1">Analisa o mercado e seus trades</div>
-                </div>
-                <div className="bg-yellow-500/10 rounded-lg p-2 text-center">
-                  <div className="text-yellow-400 font-bold text-sm">⚡ Do</div>
-                  <div className="text-xs text-gray-400 mt-1">Aplica os ajustes sugeridos</div>
-                </div>
-                <div className="bg-purple-500/10 rounded-lg p-2 text-center">
-                  <div className="text-purple-400 font-bold text-sm">🔍 Check</div>
-                  <div className="text-xs text-gray-400 mt-1">Verifica se melhorou</div>
-                </div>
-                <div className="bg-green-500/10 rounded-lg p-2 text-center">
-                  <div className="text-green-400 font-bold text-sm">✅ Act</div>
-                  <div className="text-xs text-gray-400 mt-1">Mantém o que funciona</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Trade Data Status */}
-        {tradeStats && (
-          <div className="bg-[#0B0E14] border border-green-500/15 rounded-lg p-4 mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle size={18} className="text-green-400" />
-              <span className="text-sm text-green-400 font-bold">Dados Reais Carregados</span>
-            </div>
-            <div className="flex items-center gap-5 text-sm text-gray-300">
-              <span className="font-medium">{tradeStats.totalTrades} trades (7d)</span>
-              <span className={`font-bold ${tradeStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>${tradeStats.totalPnL.toFixed(2)} PnL</span>
-              <span className="font-bold text-purple-400">{tradeStats.winRate}% WR</span>
-            </div>
-          </div>
-        )}
-        {isLoadingTrades && (
-          <div className="bg-[#0B0E14] rounded-lg p-4 mb-5 flex items-center gap-2">
-            <RefreshCw size={16} className="text-cyan-400 animate-spin" />
-            <span className="text-sm text-gray-400">Carregando trades da API...</span>
-          </div>
-        )}
-
-        {/* Auto-Analysis Controls */}
-        <div className="bg-gradient-to-r from-purple-500/5 to-cyan-500/5 border border-purple-500/15 rounded-xl p-5 mb-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Zap size={20} className="text-yellow-400" />
-              <span className="text-base font-bold text-white">Análise Inteligente</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleToggleAuto}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-                  autoEnabled
-                    ? 'bg-green-500/15 text-green-400 border-green-500/30'
-                    : 'bg-gray-500/10 text-gray-500 border-gray-700'
-                }`}
-                title={autoEnabled ? 'Desativar análise automática' : 'Ativar análise automática a cada 24h'}
-              >
-                <Power size={14} />
-                Auto 24h {autoEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button
-                onClick={handleAnalyzeNow}
-                disabled={isAnalyzing}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all disabled:opacity-50"
-                title="Buscar trades reais e analisar agora"
-              >
-                {isAnalyzing ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                {isAnalyzing ? 'Analisando...' : 'Analisar Agora'}
-              </button>
-            </div>
-          </div>
-          <div className="text-sm text-gray-400 leading-relaxed">
-            {autoEnabled
-              ? '🤖 Modo automático LIGADO — A cada 24 horas, o sistema busca seus trades mais recentes, analisa o desempenho de cada agente e aplica os ajustes automaticamente. Você não precisa fazer nada!'
-              : '⏸ Modo automático DESLIGADO — Clique em "Analisar Agora" para o sistema avaliar seus trades e sugerir melhorias. Você pode revisar e aplicar os ajustes manualmente.'}
-          </div>
-        </div>
-
-        {/* All Results (after Analyze Now) — ENHANCED */}
-        {allResults && (
-          <div className="bg-[#0B0E14] border border-cyan-500/20 rounded-xl p-5 mb-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle size={18} className="text-green-400" />
-                <span className="text-base font-bold text-white">Resultado da Análise</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleApplyAll}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25 transition-all"
-                  title="Aplicar todos os ajustes sugeridos"
-                >
-                  <Zap size={14} />
-                  Aplicar Todos Ajustes
-                </button>
-                <button onClick={() => setAllResults(null)} className="text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors" title="Fechar">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            
-            <p className="text-sm text-gray-400 mb-4">
-              Abaixo estão os ajustes que o sistema sugere para melhorar o desempenho dos seus agentes. 
-              Você pode aplicar todos de uma vez ou selecionar apenas os que deseja:
+      {/* Explicação */}
+      <div className="bg-surface rounded-2xl border border-card-border p-5">
+        <div className="flex items-start gap-3">
+          <Info className="text-yellow-400 mt-1 shrink-0" size={22} />
+          <div>
+            <h3 className="text-yellow-400 font-bold text-lg mb-2">💡 Como funciona?</h3>
+            <p className="text-gray-300 text-base leading-relaxed">
+              Os <strong>Agentes IA</strong> analisam o desempenho de cada <strong>perfil de investimento</strong> (Seguro, Moderado, Ousado, Especialista, Alpha Predator) 
+              e sugerem ajustes específicos para cada um. Cada perfil tem uma <strong>personalidade única</strong> — como investidores diferentes competindo para gerar mais lucro.
             </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <div className="bg-blue-500/10 p-3 rounded-xl text-center border border-blue-500/20">
+                <div className="text-blue-400 font-bold">📋 Plan</div>
+                <div className="text-xs text-gray-400 mt-1">Analisa trades reais de cada perfil</div>
+              </div>
+              <div className="bg-yellow-500/10 p-3 rounded-xl text-center border border-yellow-500/20">
+                <div className="text-yellow-400 font-bold">⚡ Do</div>
+                <div className="text-xs text-gray-400 mt-1">Sugere ajustes em leverage, SL, TP</div>
+              </div>
+              <div className="bg-purple-500/10 p-3 rounded-xl text-center border border-purple-500/20">
+                <div className="text-purple-400 font-bold">🔍 Check</div>
+                <div className="text-xs text-gray-400 mt-1">Compara com os concorrentes</div>
+              </div>
+              <div className="bg-green-500/10 p-3 rounded-xl text-center border border-green-500/20">
+                <div className="text-green-400 font-bold">✅ Act</div>
+                <div className="text-xs text-gray-400 mt-1">Aplica mudanças no Motor</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-            <div className="space-y-4">
-              {allResults.map((r, ri) => (
-                <div key={ri} className="border border-cyan-500/15 rounded-lg p-4 bg-[#151A25]/50">
-                  <div className="text-base font-bold text-cyan-400 mb-3 flex items-center gap-2">
-                    <Bot size={16} />
-                    {r.agentName}
+      {/* Trade Stats + Controls */}
+      <div className="bg-surface rounded-2xl border border-card-border p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            {tradeStats ? (
+              <>
+                <span className="text-green-400 text-sm font-medium">✓ Dados Reais Carregados</span>
+                <span className="text-gray-400 text-sm">{tradeStats.totalTrades} trades (7d)</span>
+                <span className={`text-sm font-bold ${tradeStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${tradeStats.totalPnL.toFixed(2)} PnL
+                </span>
+                <span className="text-gray-400 text-sm">{tradeStats.winRate}% WR</span>
+              </>
+            ) : isLoadingTrades ? (
+              <span className="text-yellow-400 text-sm animate-pulse">Carregando trades...</span>
+            ) : (
+              <span className="text-gray-500 text-sm">Sem dados de trades</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={handleToggleAuto}
+              className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${autoEnabled ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-700/50 text-gray-400 border border-gray-600/30'}`}>
+              <Clock size={16} />
+              Auto 24h {autoEnabled ? 'ON' : 'OFF'}
+            </button>
+            <button onClick={handleAnalyzeNow} disabled={isAnalyzing}
+              className="px-5 py-2 rounded-xl bg-primary/20 text-primary border border-primary/30 text-sm font-bold flex items-center gap-2 hover:bg-primary/30 disabled:opacity-50 transition-all">
+              {isAnalyzing ? <RefreshCw size={16} className="animate-spin" /> : <Zap size={16} />}
+              {isAnalyzing ? 'Analisando...' : 'Analisar Agora'}
+            </button>
+          </div>
+        </div>
+
+        {autoEnabled && (
+          <div className="mt-3 p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+            <p className="text-green-300 text-sm">
+              ⏰ <strong>Modo Automático Ativo</strong> — A cada 24h o sistema analisa todos os perfis, calcula ajustes e aplica automaticamente.
+              Cada perfil compete para maximizar lucros conforme sua personalidade de investidor.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-surface rounded-2xl border border-card-border p-5 text-center">
+          <div className="text-3xl font-black text-white">{activeProfilesCount}</div>
+          <div className="text-sm text-gray-400 mt-1">Perfis Ativos</div>
+        </div>
+        <div className="bg-surface rounded-2xl border border-card-border p-5 text-center">
+          <div className="text-3xl font-black text-white">{agents.filter(a => a.active).length}</div>
+          <div className="text-sm text-gray-400 mt-1">Agentes IA</div>
+        </div>
+        <div className="bg-surface rounded-2xl border border-card-border p-5 text-center">
+          <div className={`text-3xl font-black ${(profiles.reduce((s, p) => s + p.pnl, 0)) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            ${profiles.reduce((s, p) => s + p.pnl, 0).toFixed(2)}
+          </div>
+          <div className="text-sm text-gray-400 mt-1">PnL Total Perfis</div>
+        </div>
+        <div className="bg-surface rounded-2xl border border-card-border p-5 text-center">
+          <div className="text-3xl font-black text-cyan-400">{totalChanges}</div>
+          <div className="text-sm text-gray-400 mt-1">Ajustes Pendentes</div>
+        </div>
+      </div>
+
+      {/* Profile Analysis Results */}
+      {profileResults && profileResults.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <Activity size={22} className="text-primary" /> Resultado da Análise por Perfil
+            </h3>
+            {totalChanges > 0 && (
+              <button onClick={handleApplyAll}
+                className="px-5 py-2 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 font-bold text-sm flex items-center gap-2 hover:bg-green-500/30">
+                <CheckCircle size={16} /> Aplicar Todos ({totalChanges} ajustes)
+              </button>
+            )}
+          </div>
+
+          {/* Leaderboard */}
+          <div className="bg-surface rounded-2xl border border-card-border p-5">
+            <h4 className="text-lg font-bold text-yellow-400 flex items-center gap-2 mb-4">
+              <Trophy size={20} /> Ranking de Competição
+            </h4>
+            <div className="space-y-2">
+              {profileResults.sort((a, b) => b.overallScore - a.overallScore).map((r, idx) => (
+                <div key={r.profileId} className="flex items-center justify-between p-3 bg-black/20 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xl font-black ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-orange-400' : 'text-gray-500'}`}>
+                      #{idx + 1}
+                    </span>
+                    {PROFILE_ICONS[r.profileId] || <Target size={20} />}
+                    <span className="text-white font-bold">{r.profileName}</span>
+                    <span className="text-gray-500 text-sm">{r.riskLevel}</span>
                   </div>
-                  <div className="space-y-2">
-                    {r.actions.map((action, ai) => {
-                      const key = `${ri}-${ai}`;
-                      const isSelected = selectedActions.has(key);
-                      // Parse action for better display
-                      const isWarning = action.includes('⚠') || action.includes('negativo') || action.includes('reduz');
-                      const isPositive = action.includes('✅') || action.includes('ideal') || action.includes('bom');
-                      return (
-                        <label
-                          key={ai}
-                          className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all border ${
-                            isSelected ? 'bg-cyan-500/10 border-cyan-500/25' : 'bg-black/20 border-transparent hover:bg-white/5'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleActionSelection(key)}
-                            className="mt-1 accent-cyan-400 w-4 h-4"
-                          />
-                          <div className="flex-1">
-                            <div className={`text-sm font-medium ${isWarning ? 'text-yellow-400' : isPositive ? 'text-green-400' : 'text-gray-300'}`}>
-                              {action}
-                            </div>
-                            {isWarning && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                ↳ Este ajuste vai modificar os parâmetros deste agente para reduzir riscos
-                              </div>
-                            )}
-                            {isPositive && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                ↳ Nenhuma alteração necessária — agente está com bom desempenho
-                              </div>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
+                  <div className="flex items-center gap-4">
+                    <span className={`text-sm font-bold ${r.currentMetrics.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${r.currentMetrics.pnl.toFixed(2)}
+                    </span>
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${r.overallScore >= 65 ? 'bg-green-500/20 text-green-400' : r.overallScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
+                      Score: {r.overallScore}
+                    </div>
+                    <span className="text-gray-400 text-sm">{r.suggestedChanges.length} ajustes</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Global Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[#0B0E14] rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-cyan-400">{agents.filter(a => a.active).length}</div>
-            <div className="text-sm text-gray-400 mt-1">Agentes Ativos</div>
-          </div>
-          <div className="bg-[#0B0E14] rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-yellow-400">{agents.reduce((s, a) => s + a.cycles, 0)}</div>
-            <div className="text-sm text-gray-400 mt-1">Ciclos Total</div>
-          </div>
-          <div className="bg-[#0B0E14] rounded-xl p-4 text-center">
-            <div className={`text-3xl font-bold ${agents.reduce((s, a) => s + a.totalPnL, 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ${agents.reduce((s, a) => s + a.totalPnL, 0).toFixed(2)}
-            </div>
-            <div className="text-sm text-gray-400 mt-1">PnL Total</div>
-          </div>
-          <div className="bg-[#0B0E14] rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-purple-400">
-              {agents.reduce((s, a) => s + a.cycles, 0) > 0
-                ? ((agents.reduce((s, a) => s + a.wins, 0) / agents.reduce((s, a) => s + a.cycles, 0)) * 100).toFixed(0)
-                : 0}%
-            </div>
-            <div className="text-sm text-gray-400 mt-1">Win Rate Geral</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Leaderboard */}
-      {ranked.length > 0 && (
-        <div className="bg-[#151A25] border border-[#2A303C] rounded-xl p-5">
-          <h3 className="text-base font-bold text-gray-300 uppercase mb-4 flex items-center gap-2">
-            <Award size={18} className="text-yellow-400" /> Leaderboard
-          </h3>
-          <div className="space-y-2">
-            {ranked.map((agent, i) => (
-              <div key={agent.id} className="flex items-center justify-between bg-[#0B0E14] rounded-lg px-5 py-3">
-                <div className="flex items-center gap-3">
-                  <span className={`text-xl font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : 'text-orange-400'}`}>
-                    #{i + 1}
-                  </span>
-                  <div>
-                    <span className="text-base text-white font-bold">{agent.name}</span>
-                    <span className="text-xs text-gray-500 ml-2">{agent.cycles} ciclos</span>
+          {/* Per-Profile Detail Cards */}
+          {profileResults.map(result => (
+            <div key={result.profileId}
+              className={`rounded-2xl border ${PROFILE_COLORS[result.profileId] || 'border-gray-500/30 bg-gray-500/5'} overflow-hidden`}>
+              {/* Profile Header */}
+              <button onClick={() => toggleExpandProfile(result.profileId)}
+                className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 rounded-xl bg-black/30">
+                    {PROFILE_ICONS[result.profileId] || <Target size={20} />}
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-xl font-bold text-white">{result.profileName}</h4>
+                    <p className="text-sm text-gray-400">{result.riskLevel} • {result.suggestedChanges.length} ajustes sugeridos</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-300 font-medium">{agent.winRate.toFixed(0)}% WR</span>
-                  <span className={`text-base font-bold ${agent.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    ${agent.totalPnL.toFixed(2)}
-                  </span>
+                  <div className="text-right">
+                    <div className={`text-lg font-bold ${result.currentMetrics.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${result.currentMetrics.pnl.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500">PnL do Perfil</div>
+                  </div>
+                  <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${result.overallScore >= 65 ? 'bg-green-500/20 text-green-400' : result.overallScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {result.overallScore}
+                  </div>
+                  {expandedProfiles.has(result.profileId) ? <ChevronUp className="text-gray-400" /> : <ChevronDown className="text-gray-400" />}
                 </div>
-              </div>
-            ))}
-          </div>
+              </button>
+
+              {/* Expanded Content */}
+              {expandedProfiles.has(result.profileId) && (
+                <div className="p-5 border-t border-white/10 space-y-4">
+                  {/* Current Metrics */}
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                    <div className="bg-black/30 p-3 rounded-xl text-center">
+                      <div className="text-lg font-bold text-white">{result.currentMetrics.leverage}x</div>
+                      <div className="text-xs text-gray-400">Leverage</div>
+                    </div>
+                    <div className="bg-black/30 p-3 rounded-xl text-center">
+                      <div className="text-lg font-bold text-white">${result.currentMetrics.marginPerTrade}</div>
+                      <div className="text-xs text-gray-400">Margem/Trade</div>
+                    </div>
+                    <div className="bg-black/30 p-3 rounded-xl text-center">
+                      <div className="text-lg font-bold text-red-400">{result.currentMetrics.stopLoss}%</div>
+                      <div className="text-xs text-gray-400">Stop Loss</div>
+                    </div>
+                    <div className="bg-black/30 p-3 rounded-xl text-center">
+                      <div className="text-lg font-bold text-green-400">{result.currentMetrics.takeProfit}%</div>
+                      <div className="text-xs text-gray-400">Take Profit</div>
+                    </div>
+                    <div className="bg-black/30 p-3 rounded-xl text-center">
+                      <div className="text-lg font-bold text-cyan-400">{result.currentMetrics.confidenceThreshold}%</div>
+                      <div className="text-xs text-gray-400">Threshold</div>
+                    </div>
+                  </div>
+
+                  {/* Reasoning */}
+                  {result.reasoning.length > 0 && (
+                    <div className="bg-black/20 rounded-xl p-4">
+                      <h5 className="text-sm font-bold text-gray-300 mb-2">📝 Análise do Agente IA:</h5>
+                      <div className="space-y-1">
+                        {result.reasoning.map((r, i) => (
+                          <p key={i} className="text-sm text-gray-400">{r}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Suggested Changes */}
+                  {result.suggestedChanges.length > 0 && (
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Settings size={16} className="text-primary" /> Ajustes Sugeridos para {result.profileName}:
+                      </h5>
+                      {result.suggestedChanges.map((change, i) => (
+                        <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${change.impact === 'positive' ? 'bg-green-500/5 border-green-500/20' : change.impact === 'warning' ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-gray-500/5 border-gray-500/20'}`}>
+                          <button onClick={() => toggleProfileChange(result.profileId, change.field)}
+                            className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${change.selected ? 'bg-primary border-primary' : 'bg-transparent border-gray-600'}`}>
+                            {change.selected && <Check size={14} className="text-white" />}
+                          </button>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-bold text-sm">{change.fieldLabel}:</span>
+                              <span className="text-red-400 text-sm line-through">{change.currentValue}{change.field === 'leverage' ? 'x' : change.field.includes('Loss') || change.field.includes('Profit') || change.field.includes('confidence') ? '%' : ''}</span>
+                              <ArrowRight size={14} className="text-gray-500" />
+                              <span className="text-green-400 font-bold text-sm">{change.newValue}{change.field === 'leverage' ? 'x' : change.field.includes('Loss') || change.field.includes('Profit') || change.field.includes('confidence') ? '%' : ''}</span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">{change.reason}</p>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button onClick={() => handleApplyProfileChanges(result)}
+                        disabled={result.suggestedChanges.filter(c => c.selected).length === 0}
+                        className="mt-2 w-full py-3 rounded-xl bg-primary/20 text-primary font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary/30 disabled:opacity-30 transition-all">
+                        <CheckCircle size={16} /> Aplicar Ajustes Selecionados em {result.profileName}
+                      </button>
+                    </div>
+                  )}
+
+                  {result.suggestedChanges.length === 0 && (
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
+                      <p className="text-green-400 font-bold">✅ Perfil otimizado! Nenhum ajuste necessário.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Agent Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {agents.map(agent => (
-          <div key={agent.id} className="bg-[#151A25] border border-[#2A303C] rounded-xl p-5 hover:border-[#3A404C] transition-all">
-            {/* Agent Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <Bot size={22} className={agent.active ? 'text-cyan-400' : 'text-gray-600'} />
+      {/* Empty state */}
+      {(!profileResults || profileResults.length === 0) && !isAnalyzing && (
+        <div className="bg-surface rounded-2xl border border-card-border p-10 text-center">
+          <Brain size={48} className="text-gray-600 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-gray-400 mb-2">Pronto para Analisar</h3>
+          <p className="text-gray-500 text-sm max-w-md mx-auto">
+            Clique em <strong>"Analisar Agora"</strong> para que os agentes IA analisem cada perfil de investimento e sugiram ajustes específicos.
+            Cada perfil compete como um investidor diferente para maximizar lucros.
+          </p>
+        </div>
+      )}
+
+      {/* Legacy Agents Section (collapsed) */}
+      <details className="bg-surface rounded-2xl border border-card-border overflow-hidden">
+        <summary className="p-4 cursor-pointer hover:bg-white/5 flex items-center gap-3 text-gray-400">
+          <Bot size={20} />
+          <span className="font-bold">Agentes Internos (Motor PDCA)</span>
+          <span className="text-xs text-gray-500 ml-auto">{agents.filter(a => a.active).length} ativos</span>
+        </summary>
+        <div className="p-4 border-t border-card-border grid grid-cols-1 md:grid-cols-2 gap-4">
+          {agents.map(agent => (
+            <div key={agent.id} className="bg-black/20 rounded-xl p-4 border border-white/5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Bot size={18} className={agent.active ? 'text-green-400' : 'text-gray-600'} />
+                  <span className="text-white font-bold">{agent.name}</span>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${PHASE_COLORS[agent.phase]}`}>{agent.phase}</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">{agent.strategy}</p>
+              <div className="grid grid-cols-4 gap-2 text-center">
                 <div>
-                  <h4 className="text-base font-bold text-white">{agent.name}</h4>
-                  <p className="text-xs text-gray-400">{agent.strategy}</p>
+                  <div className="text-sm font-bold text-white">{agent.cycles}</div>
+                  <div className="text-[10px] text-gray-500">Ciclos</div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${PHASE_COLORS[agent.phase]}`}>
-                  {agent.phase}
-                </span>
-                <button
-                  onClick={() => toggleAgent(agent.id)}
-                  className={`p-2 rounded-lg ${agent.active ? 'text-green-400 hover:bg-green-500/10' : 'text-gray-500 hover:bg-white/5'}`}
-                  title={agent.active ? 'Desativar' : 'Ativar'}
-                >
-                  {agent.active ? <Pause size={16} /> : <Play size={16} />}
-                </button>
+                <div>
+                  <div className={`text-sm font-bold ${agent.winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{agent.winRate.toFixed(0)}%</div>
+                  <div className="text-[10px] text-gray-500">Win Rate</div>
+                </div>
+                <div>
+                  <div className={`text-sm font-bold ${agent.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>${agent.totalPnL.toFixed(2)}</div>
+                  <div className="text-[10px] text-gray-500">PnL</div>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-cyan-400">{agent.sharpeRatio.toFixed(2)}</div>
+                  <div className="text-[10px] text-gray-500">Sharpe</div>
+                </div>
               </div>
             </div>
-
-            {/* Metrics */}
-            <div className="grid grid-cols-4 gap-3 mb-4 bg-[#0B0E14] rounded-xl p-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-white">{agent.cycles}</div>
-                <div className="text-xs text-gray-400">Ciclos</div>
-              </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${agent.winRate >= 50 ? 'text-green-400' : agent.winRate > 0 ? 'text-red-400' : 'text-gray-500'}`}>
-                  {agent.winRate.toFixed(0)}%
-                </div>
-                <div className="text-xs text-gray-400">Win Rate</div>
-              </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${agent.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  ${agent.totalPnL.toFixed(2)}
-                </div>
-                <div className="text-xs text-gray-400">PnL</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-400">{agent.sharpeRatio.toFixed(2)}</div>
-                <div className="text-xs text-gray-400">Sharpe</div>
-              </div>
-            </div>
-
-            {/* Last Analysis & Apply */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Clock size={14} />
-                Última análise: {timeAgo(getLastAnalysisTime(agent.id))}
-              </div>
-              <button
-                onClick={() => handleApplySingle(agent.id)}
-                className="flex items-center gap-2 text-sm font-bold text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-4 py-2 rounded-lg transition-colors"
-                title="Aplicar sugestões para este agente"
-              >
-                <Zap size={14} />
-                Aplicar Ajustes
-              </button>
-            </div>
-
-            {/* Applied Results */}
-            {appliedResults[agent.id] && (
-              <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-3 mb-3">
-                <div className="text-xs font-bold text-purple-400 mb-2">✅ Ajustes Aplicados:</div>
-                {appliedResults[agent.id].map((r, i) => (
-                  <div key={i} className="text-sm text-gray-300 py-0.5">{r}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Expandable Details — MULTIPLE EXPAND */}
-            <button
-              onClick={() => toggleExpanded(agent.id)}
-              className="w-full flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-gray-200 py-2 rounded-lg hover:bg-white/5 transition-colors"
-            >
-              {expandedAgents.has(agent.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              {expandedAgents.has(agent.id) ? 'Menos' : 'Detalhes'}
-            </button>
-
-            {expandedAgents.has(agent.id) && (
-              <div className="mt-3 space-y-3 border-t border-[#2A303C]/50 pt-3">
-                {/* Threshold */}
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-300 font-medium">Threshold: {agent.confidenceThreshold}%</label>
-                  <input
-                    type="range"
-                    min={40}
-                    max={95}
-                    value={agent.confidenceThreshold}
-                    onChange={(e) => updateAgentThreshold(agent.id, parseInt(e.target.value))}
-                    className="w-28 h-1.5 accent-cyan-400"
-                    title="Threshold de confiança"
-                  />
-                </div>
-
-                {/* Adaptive Params */}
-                <div className="text-sm text-gray-400 space-y-1 bg-[#0B0E14] rounded-lg p-3">
-                  <div className="text-xs text-gray-500 font-bold mb-2 uppercase">Parâmetros Adaptativos</div>
-                  <div>📊 Threshold Inicial: {agent.adaptiveParams.initialThreshold}% → Atual: {agent.adaptiveParams.adjustedThreshold.toFixed(1)}%</div>
-                  <div>⏱ Cooldown: {(agent.adaptiveParams.cooldownMs / 1000).toFixed(0)}s</div>
-                  <div>📈 Leverage Mult: {agent.adaptiveParams.leverageMultiplier.toFixed(1)}x</div>
-                </div>
-
-                {/* Last Cycle */}
-                {agent.lastCycle && (
-                  <div className="bg-[#0B0E14] rounded-lg p-3">
-                    <div className="text-sm text-gray-400 font-bold mb-1">Último Trade</div>
-                    <div className="text-sm text-gray-300">
-                      {agent.lastCycle.planSymbol} {agent.lastCycle.planSignal} ({agent.lastCycle.planConfidence?.toFixed(0)}%)
-                      → {agent.lastCycle.checkResult === 'WIN' ? '✅ WIN' : '❌ LOSS'}
-                      {agent.lastCycle.checkPnL !== undefined && ` $${agent.lastCycle.checkPnL.toFixed(2)}`}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sugestões de Melhoria */}
-                <div className="bg-gradient-to-r from-purple-500/5 to-cyan-500/5 rounded-xl p-4 border border-purple-500/10">
-                  <div className="text-sm text-purple-400 font-bold mb-2 flex items-center gap-2">
-                    <Zap size={14} /> SUGESTÕES DE MELHORIA
-                  </div>
-                  {getAgentSuggestions(agent.id).map((sug, i) => (
-                    <div key={i} className="text-sm text-gray-300 py-1">
-                      {sug}
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => handleApplySingle(agent.id)}
-                    className="mt-3 flex items-center gap-2 text-sm font-bold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-4 py-2.5 rounded-lg transition-colors w-full justify-center border border-cyan-500/20"
-                    title="Aplicar todas as sugestões"
-                  >
-                    <CheckCircle size={14} />
-                    Aplicar Sugestões Automaticamente
-                  </button>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3 mt-2">
-                  <button
-                    onClick={() => resetAgent(agent.id)}
-                    className="flex items-center gap-2 text-sm text-red-400 hover:bg-red-500/10 px-3 py-2 rounded-lg transition-colors"
-                    title="Resetar dados do agente"
-                  >
-                    <RotateCcw size={14} /> Resetar
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }
