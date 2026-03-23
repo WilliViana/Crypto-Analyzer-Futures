@@ -923,7 +923,7 @@ export default function App() {
       case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
       case 'risk': return <RiskManagement riskMode={riskMode} setRiskMode={setRiskMode} dailyTargetPct={dailyTargetPct} setDailyTargetPct={setDailyTargetPct} dailyStopLossPct={dailyStopLossPct} setDailyStopLossPct={setDailyStopLossPct} profiles={profiles} setProfiles={setProfiles} lang={lang} />;
       case 'vpn': return <VPNManager />;
-      case 'agents': return <PDCADashboard exchanges={exchanges} />;
+      case 'agents': return <PDCADashboard exchanges={exchanges} assets={realPortfolio.assets} />;
       case 'admin': return <AdminPanel lang={lang} />;
       case 'profile': return <UserProfile lang={lang} />;
       case 'info': return <InformationTab lang={lang} />;

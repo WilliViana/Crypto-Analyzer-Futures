@@ -46,9 +46,10 @@ function timeAgo(ts: number | null): string {
 
 interface PDCADashboardProps {
   exchanges?: Exchange[];
+  assets?: { symbol: string; amount: number; price: number; value: number; unrealizedPnL: number; allocation?: number; initialMargin?: number }[];
 }
 
-export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
+export default function PDCADashboard({ exchanges = [], assets = [] }: PDCADashboardProps) {
   const [agents, setAgents] = useState<AIAgent[]>(() => {
     initPDCAService();
     return getAgents();
@@ -71,7 +72,24 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
   useEffect(() => {
     const loadRealTrades = async () => {
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-      if (!activeExchange) return;
+      if (!activeExchange) {
+        // Fallback: usar posições abertas como dados
+        if (assets.length > 0) {
+          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+            symbol: a.symbol,
+            side: a.amount > 0 ? 'BUY' : 'SELL',
+            pnl: a.unrealizedPnL,
+            time: Date.now(),
+            realizedPnl: a.unrealizedPnL,
+          }));
+          if (assetTrades.length > 0) {
+            feedRealTrades(assetTrades);
+            const stats = getRealTradeStats();
+            if (stats) setTradeStats(stats);
+          }
+        }
+        return;
+      }
       
       setIsLoadingTrades(true);
       try {
@@ -80,15 +98,44 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
           feedRealTrades(trades);
           const stats = getRealTradeStats();
           if (stats) setTradeStats(stats);
+        } else if (assets.length > 0) {
+          // API retornou vazio, usar assets
+          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+            symbol: a.symbol,
+            side: a.amount > 0 ? 'BUY' : 'SELL',
+            pnl: a.unrealizedPnL,
+            time: Date.now(),
+            realizedPnl: a.unrealizedPnL,
+          }));
+          if (assetTrades.length > 0) {
+            feedRealTrades(assetTrades);
+            const stats = getRealTradeStats();
+            if (stats) setTradeStats(stats);
+          }
         }
       } catch (err) {
         console.warn('[PDCA] Erro ao carregar trades reais:', err);
+        // Fallback: usar posições abertas
+        if (assets.length > 0) {
+          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+            symbol: a.symbol,
+            side: a.amount > 0 ? 'BUY' : 'SELL',
+            pnl: a.unrealizedPnL,
+            time: Date.now(),
+            realizedPnl: a.unrealizedPnL,
+          }));
+          if (assetTrades.length > 0) {
+            feedRealTrades(assetTrades);
+            const stats = getRealTradeStats();
+            if (stats) setTradeStats(stats);
+          }
+        }
       } finally {
         setIsLoadingTrades(false);
       }
     };
     loadRealTrades();
-  }, [exchanges]);
+  }, [exchanges, assets]);
 
   // Auto-análise a cada 24h
   useEffect(() => {
@@ -140,10 +187,32 @@ export default function PDCADashboard({ exchanges = [] }: PDCADashboardProps) {
           feedRealTrades(trades);
           const stats = getRealTradeStats();
           if (stats) setTradeStats(stats);
+        } else if (assets.length > 0) {
+          // API vazia, usar assets
+          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+            symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+            pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+          }));
+          if (assetTrades.length > 0) feedRealTrades(assetTrades);
         }
       } catch (err) {
         console.warn('[PDCA] Erro ao buscar trades:', err);
+        // Fallback assets
+        if (assets.length > 0) {
+          const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+            symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+            pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+          }));
+          if (assetTrades.length > 0) feedRealTrades(assetTrades);
+        }
       }
+    } else if (assets.length > 0) {
+      // Sem exchange, usar assets direto
+      const assetTrades = assets.filter(a => a.unrealizedPnL !== 0).map(a => ({
+        symbol: a.symbol, side: a.amount > 0 ? 'BUY' : 'SELL',
+        pnl: a.unrealizedPnL, time: Date.now(), realizedPnl: a.unrealizedPnL,
+      }));
+      if (assetTrades.length > 0) feedRealTrades(assetTrades);
     }
 
     // Analisar com dados reais
