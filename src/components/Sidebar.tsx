@@ -95,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({ activeTab, setActiveTab, l
           </div>
           <div className="hidden lg:block overflow-hidden">
             <div className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">{isAdmin ? 'Administrator' : t.role}</div>
-            <div className="text-xs text-gray-500 truncate">{isAdmin ? 'admin@crypto.com' : 'user@crypto.com'}</div>
+            <div className="text-xs text-gray-500 truncate">{isAdmin ? 'admin@crypto.com' : 'futurescryptos7@gmail.com'}</div>
           </div>
         </div>
 

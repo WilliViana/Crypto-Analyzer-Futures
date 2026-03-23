@@ -774,30 +774,32 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             )}
 
             {/* Main Metrics - Row 1 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {isWidgetVisible('saldoTotal') && (
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Saldo Total</div>
-                    <div className="text-2xl font-mono font-bold text-white">{hideBalance ? maskedValue : `$${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</div>
-                    <div className="absolute top-3 right-3 p-2 bg-primary/10 rounded-lg text-primary"><DollarSign size={14} /></div>
+                <div className="col-span-2 bg-gradient-to-br from-[#151A25] to-[#1A1F2E] border border-cyan-500/15 rounded-xl p-5 shadow-lg relative overflow-hidden group hover:border-cyan-500/30 transition-all">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl group-hover:bg-cyan-500/10 transition-all" />
+                    <div className="text-[10px] uppercase font-bold text-cyan-400/70 mb-1 tracking-wider">Saldo Total</div>
+                    <div className="text-3xl font-mono font-bold text-white">{hideBalance ? maskedValue : `$${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</div>
+                    <div className="absolute top-4 right-4 p-2.5 bg-cyan-500/10 rounded-lg text-cyan-400"><DollarSign size={18} /></div>
                 </div>
                 )}
 
                 {isWidgetVisible('pnl') && (
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-blue-500/30 transition-colors" onClick={() => setMetricTooltip('PnL Não Realizado é o lucro ou prejuízo das suas posições abertas. Ele muda em tempo real conforme o preço dos ativos. Só se torna "realizado" quando você fecha a posição.')}>
-                    <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">PnL Não Realizado ⓘ</div>
-                    <div className={`text-2xl font-mono font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="col-span-2 bg-gradient-to-br from-[#151A25] to-[#1A1F2E] border border-blue-500/15 rounded-xl p-5 shadow-lg relative overflow-hidden cursor-pointer group hover:border-blue-500/30 transition-all" onClick={() => setMetricTooltip('PnL Não Realizado é o lucro ou prejuízo das suas posições abertas. Ele muda em tempo real conforme o preço dos ativos. Só se torna "realizado" quando você fecha a posição.')}>
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition-all" />
+                    <div className="text-[10px] uppercase font-bold text-blue-400/70 mb-1 tracking-wider">PnL Não Realizado ⓘ</div>
+                    <div className={`text-3xl font-mono font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {hideBalance ? maskedValue : `${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                     </div>
-                    <div className="absolute top-3 right-3 p-2 bg-blue-500/10 rounded-lg text-blue-500"><Activity size={14} /></div>
+                    <div className="absolute top-4 right-4 p-2.5 bg-blue-500/10 rounded-lg text-blue-400"><Activity size={18} /></div>
                 </div>
                 )}
 
                 {isWidgetVisible('positions') && (
-                <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-colors" onClick={() => setMetricTooltip('Posições são os trades (ordens) atualmente abertos na sua conta. Cada posição representa um ativo sendo negociado com alavancagem.')}>
+                <div className="bg-[#151A25] border border-[#2A303C] rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-yellow-500/20 transition-all" onClick={() => setMetricTooltip('Posições são os trades (ordens) atualmente abertos na sua conta. Cada posição representa um ativo sendo negociado com alavancagem.')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Posições ⓘ</div>
-                    <div className="text-2xl font-mono font-bold text-white">{assets.length}</div>
-                    <div className="absolute top-3 right-3 p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Layers size={14} /></div>
+                    <div className="text-xl font-mono font-bold text-white">{assets.length}</div>
+                    <div className="absolute top-3 right-3 p-1.5 bg-yellow-500/10 rounded-lg text-yellow-500"><Layers size={12} /></div>
                 </div>
                 )}
 
