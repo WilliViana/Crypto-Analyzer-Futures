@@ -151,18 +151,14 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
     return () => clearInterval(interval);
   }, [loadRealTrades]);
 
-  // Auto-análise a cada 24h: aplica nos perfis diretamente
+  // Auto-análise: quando ativado, roda imediato e atualiza a cada 5 min
   useEffect(() => {
     if (!autoEnabled || !setProfiles || profiles.length === 0) {
       if (autoTimerRef.current) clearInterval(autoTimerRef.current);
       return;
     }
 
-    const checkAndRun = async () => {
-      const lastAutoRun = localStorage.getItem('pdca_last_auto_run');
-      const now = Date.now();
-      if (lastAutoRun && (now - parseInt(lastAutoRun)) < 24 * 60 * 60 * 1000) return;
-
+    const runAutoAnalysis = async () => {
       // Carregar trades reais
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
       if (activeExchange) {
@@ -172,12 +168,11 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         } catch {}
       }
 
-      // Analisar e aplicar em todos os perfis
+      // Analisar todos os perfis
       const realTrades = getRealTrades();
       const tradesByProfile: Record<string, any[]> = {};
       const activeProfiles = profiles.filter(p => p.active);
 
-      // Distribuir trades entre perfis ativos
       if (realTrades.length > 0 && activeProfiles.length > 0) {
         const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
         activeProfiles.forEach((profile, idx) => {
@@ -189,6 +184,10 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
 
       const results = analyzeAllProfiles(profiles, tradesByProfile);
       
+      // Mostrar resultados na tela em tempo real
+      setProfileResults(results);
+      setExpandedProfiles(new Set(results.map(r => r.profileId)));
+
       // Aplicar TODOS ajustes automaticamente
       for (const result of results) {
         if (result.suggestedChanges.length > 0) {
@@ -200,11 +199,13 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         }
       }
 
-      localStorage.setItem('pdca_last_auto_run', now.toString());
+      localStorage.setItem('pdca_last_auto_run', Date.now().toString());
     };
 
-    checkAndRun();
-    autoTimerRef.current = setInterval(checkAndRun, 60 * 60 * 1000);
+    // Rodar imediatamente ao ativar
+    runAutoAnalysis();
+    // Atualizar a cada 5 minutos
+    autoTimerRef.current = setInterval(runAutoAnalysis, 5 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
   }, [autoEnabled, exchanges, profiles, setProfiles]);
 
@@ -212,6 +213,10 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
     const next = !autoEnabled;
     setAutoEnabled(next);
     setAutoAnalysis(next);
+    // Se desligou, limpar resultados auto
+    if (!next) {
+      setProfileResults(null);
+    }
   };
 
   const handleAnalyzeNow = async () => {
