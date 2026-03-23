@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory, callBinanceProxy } from '../services/exchangeService';
@@ -50,6 +50,15 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [metricTooltip, setMetricTooltip] = useState<string | null>(null);
     const [tradeDetailModal, setTradeDetailModal] = useState<'best' | 'worst' | null>(null);
     const [livePrice, setLivePrice] = useState<number | null>(null);
+    const [hideBalance, setHideBalance] = useState(() => localStorage.getItem('hideBalance') === 'true');
+
+    const toggleHideBalance = () => {
+        setHideBalance(prev => {
+            localStorage.setItem('hideBalance', String(!prev));
+            return !prev;
+        });
+    };
+    const maskedValue = '••••••';
     const livePriceSymbolRef = useRef<string | null>(null);
 
     // Stable REST polling for live price (every 3s) — no flicker
@@ -581,7 +590,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {/* TradingView Chart (Optional) */}
             <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden relative">
                 <div className="p-4 border-b border-[#2A303C] flex justify-between items-center bg-[#1A1F2E]">
-                    <div className="text-white font-bold text-sm">Visão Geral: {selectedSymbol}</div>
+                    <div className="flex items-center gap-3">
+                        <div className="text-white font-bold text-sm">Visão Geral: {selectedSymbol}</div>
+                        <button onClick={toggleHideBalance} className="text-gray-500 hover:text-white transition-colors p-1 rounded" title={hideBalance ? 'Mostrar valores' : 'Ocultar valores'}>
+                            {hideBalance ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
                     <button
                         onClick={() => setShowChart(!showChart)}
                         className="flex items-center gap-2 px-3 py-1 bg-[#2A303C] hover:bg-[#353C4B] rounded text-xs font-bold text-gray-300 border border-gray-600 transition-colors"
@@ -590,6 +604,22 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         {showChart ? 'Ocultar Gráfico' : 'Ver Gráfico'}
                     </button>
                 </div>
+                {/* Mini CoinGecko-style static chart */}
+                {!showChart && filteredEquityCurve.length > 1 && (
+                    <div className="h-[80px] w-full px-4 py-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={filteredEquityCurve}>
+                                <defs>
+                                    <linearGradient id="miniGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area type="monotone" dataKey="value" stroke={filteredEquityCurve[filteredEquityCurve.length - 1]?.value >= filteredEquityCurve[0]?.value ? '#10B981' : '#EF4444'} strokeWidth={1.5} fill="url(#miniGrad)" dot={false} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
                 {showChart && (
                     <div className="h-[500px] w-full">
                         <TradingViewWidget symbol={selectedSymbol} />
@@ -601,14 +631,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden">
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">Saldo Total</div>
-                    <div className="text-2xl font-mono font-bold text-white">${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                    <div className="text-2xl font-mono font-bold text-white">{hideBalance ? maskedValue : `$${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</div>
                     <div className="absolute top-3 right-3 p-2 bg-primary/10 rounded-lg text-primary"><DollarSign size={14} /></div>
                 </div>
 
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg relative overflow-hidden cursor-pointer hover:border-blue-500/30 transition-colors" onClick={() => setMetricTooltip('PnL Não Realizado é o lucro ou prejuízo das suas posições abertas. Ele muda em tempo real conforme o preço dos ativos. Só se torna "realizado" quando você fecha a posição.')}>
                     <div className="text-[10px] uppercase font-bold text-gray-500 mb-1">PnL Não Realizado ⓘ</div>
                     <div className={`text-2xl font-mono font-bold ${unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        {hideBalance ? maskedValue : `${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                     </div>
                     <div className="absolute top-3 right-3 p-2 bg-blue-500/10 rounded-lg text-blue-500"><Activity size={14} /></div>
                 </div>
@@ -794,7 +824,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             }, null as typeof profiles[0] | null);
                         const topId = topProfile?.id;
 
-                        return profiles.map(profile => {
+                        return [...profiles].sort((a, b) => (a.priority || 99) - (b.priority || 99)).map(profile => {
                             const currentCap = profile.currentCapital ?? profile.capital;
                             const capitalDiff = currentCap - profile.capital;
                             const capitalPct = profile.capital > 0 ? ((capitalDiff / profile.capital) * 100) : 0;
@@ -1011,62 +1041,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
             </div>
 
-            {/* Trade History */}
-            <div className="bg-surface border border-card-border rounded-xl shadow-lg overflow-hidden">
-                <div className="p-4 border-b border-card-border flex justify-between items-center bg-black/20">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase">
-                        <Clock size={16} className="text-primary" /> Histórico de Trades
-                    </h3>
-                    <span className="text-[10px] text-gray-500 font-bold">{filteredTrades.length} trades ({timeRange})</span>
-                </div>
-                <div className="overflow-auto max-h-[450px] scrollbar-hide">
-                    {filteredTrades.length > 0 ? (
-                        <table className="w-full text-xs">
-                            <thead className="sticky top-0 bg-surface">
-                                <tr className="text-gray-500 uppercase text-[9px] border-b border-card-border">
-                                    <th className="text-left p-3">Par</th>
-                                    <th className="text-left p-3">Lado</th>
-                                    <th className="text-right p-3">Qtd</th>
-                                    <th className="text-right p-3">Entrada</th>
-                                    <th className="text-right p-3">PnL</th>
-                                    <th className="text-right p-3">Status</th>
-                                    <th className="text-right p-3">Data</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredTrades.slice(0, 50).map((trade, i) => (
-                                    <tr key={trade.id || i} className="border-b border-card-border/30 hover:bg-white/5 transition-colors">
-                                        <td className="p-3 font-bold text-white">{trade.symbol}</td>
-                                        <td className="p-3">
-                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${trade.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                                {trade.side}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-right font-mono text-gray-300">{trade.amount}</td>
-                                        <td className="p-3 text-right font-mono text-gray-300">${trade.entryPrice?.toFixed(2)}</td>
-                                        <td className={`p-3 text-right font-mono font-bold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>
-                                                {trade.status || 'OPEN'}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-right text-gray-500 text-[10px]">
-                                            {trade.timestamp ? new Date(trade.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center py-10 opacity-40">
-                            <Clock size={28} className="mb-2" />
-                            <span className="text-xs font-bold uppercase">Nenhum trade registrado</span>
-                        </div>
-                    )}
-                </div>
-            </div>
+            {/* Trade History moved to dedicated History tab */}
         </div>
     );
 };

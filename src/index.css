@@ -82,9 +82,9 @@ body {
     font-size: 14px !important;
   }
 
-  /* Cards compactos */
-  .grid.grid-cols-2,
-  .grid.grid-cols-3 {
+  /* Cards compactos - excluir menus fixos */
+  .grid.grid-cols-2:not(.fixed),
+  .grid.grid-cols-3:not(.fixed) {
     grid-template-columns: 1fr !important;
   }
 

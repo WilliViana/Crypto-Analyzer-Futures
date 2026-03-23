@@ -1017,7 +1017,7 @@ export default function App() {
       {showMobileMenu && (
         <>
           <div className="fixed inset-0 z-[99]" onClick={() => setShowMobileMenu(false)} />
-          <div className="fixed bottom-[68px] right-2 left-2 z-[101] bg-[#1A1F2E]/95 backdrop-blur-md border border-[#2A303C] rounded-2xl shadow-2xl p-3 grid grid-cols-4 gap-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="fixed bottom-[68px] right-2 left-2 z-[101] bg-[#1A1F2E]/95 backdrop-blur-md border border-[#2A303C] rounded-2xl shadow-2xl p-4 grid grid-cols-3 gap-3" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
             {[
               { id: 'history', icon: History, label: 'Histórico' },
               { id: 'analysis', icon: LineChart, label: 'Análise' },
@@ -1031,10 +1031,10 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all ${activeTab === item.id ? 'bg-cyan-500/15 text-cyan-400 shadow-sm shadow-cyan-500/10' : 'text-gray-400 hover:bg-white/5 active:bg-white/10'}`}
+                className={`flex flex-col items-center gap-2 p-3.5 rounded-xl transition-all ${activeTab === item.id ? 'bg-cyan-500/15 text-cyan-400 shadow-sm shadow-cyan-500/10' : 'text-gray-400 hover:bg-white/5 active:bg-white/10'}`}
               >
-                <item.icon size={18} />
-                <span className="text-[8px] font-bold uppercase leading-tight text-center">{item.label}</span>
+                <item.icon size={24} />
+                <span className="text-[10px] font-bold uppercase leading-tight text-center">{item.label}</span>
               </button>
             ))}
           </div>
