@@ -1017,22 +1017,24 @@ export default function App() {
       {showMobileMenu && (
         <>
           <div className="fixed inset-0 z-[99]" onClick={() => setShowMobileMenu(false)} />
-          <div className="fixed bottom-[68px] right-2 left-2 z-[101] bg-[#1A1F2E] border border-[#2A303C] rounded-2xl shadow-2xl p-3 grid grid-cols-3 gap-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="fixed bottom-[68px] right-2 left-2 z-[101] bg-[#1A1F2E]/95 backdrop-blur-md border border-[#2A303C] rounded-2xl shadow-2xl p-3 grid grid-cols-4 gap-2" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))' }}>
             {[
               { id: 'history', icon: History, label: 'Histórico' },
               { id: 'analysis', icon: LineChart, label: 'Análise' },
               { id: 'logs', icon: FileText, label: 'Auditoria' },
+              { id: 'agents', icon: Layers, label: 'Agentes IA' },
+              { id: 'vpn', icon: ShieldAlert, label: 'VPN' },
               { id: 'settings', icon: Settings, label: 'API' },
-              { id: 'info', icon: Menu, label: 'Info' },
+              { id: 'info', icon: Bell, label: 'Info' },
               { id: 'profile', icon: Layers, label: 'Perfil' },
             ].map(item => (
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-cyan-500/10 text-cyan-400' : 'text-gray-400 hover:bg-white/5'}`}
+                className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all ${activeTab === item.id ? 'bg-cyan-500/15 text-cyan-400 shadow-sm shadow-cyan-500/10' : 'text-gray-400 hover:bg-white/5 active:bg-white/10'}`}
               >
-                <item.icon size={20} />
-                <span className="text-[9px] font-semibold uppercase">{item.label}</span>
+                <item.icon size={18} />
+                <span className="text-[8px] font-bold uppercase leading-tight text-center">{item.label}</span>
               </button>
             ))}
           </div>

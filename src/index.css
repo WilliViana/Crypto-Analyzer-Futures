@@ -108,21 +108,23 @@ body {
     flex-shrink: 0;
   }
 
-  /* Touch targets mínimo 44px */
-  button,
-  a,
+  /* Touch targets mínimo 44px - apenas para navegação e formulários */
+  .mobile-bottom-nav button,
+  nav button,
+  form button,
   [role="button"] {
     min-height: 44px;
     min-width: 44px;
   }
 
-  /* Modals full-width no mobile */
+  /* Modals full-width no mobile com margem e radius */
   .fixed.inset-0>div {
     max-width: 100% !important;
-    max-height: 100% !important;
-    width: 100% !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
+    max-height: 95vh !important;
+    width: calc(100% - 16px) !important;
+    margin: 8px !important;
+    border-radius: 16px !important;
+    overflow-y: auto !important;
   }
 
   /* Abas do strategy modal scrolláveis */
@@ -164,6 +166,18 @@ body {
   /* Equity curve chart full width */
   .recharts-wrapper {
     width: 100% !important;
+  }
+
+  /* Avatar responsivo no perfil */
+  .max-w-2xl {
+    max-width: 100% !important;
+    padding: 12px !important;
+  }
+
+  /* Avatar section mobile */
+  .w-24.h-24 {
+    width: 72px !important;
+    height: 72px !important;
   }
 }
 

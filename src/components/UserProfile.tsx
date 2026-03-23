@@ -229,8 +229,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
 
             {/* Avatar Section */}
             <div className="bg-surface rounded-2xl border border-card-border p-6">
-                <div className="flex items-center gap-6">
-                    <div className="relative group">
+                <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                    <div className="relative group flex flex-col items-center">
                         <div
                             onClick={handleAvatarClick}
                             className="w-24 h-24 rounded-full cursor-pointer overflow-hidden border-4 border-primary/30 hover:border-primary transition-colors bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center"
@@ -240,10 +240,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                             ) : (
                                 <User size={40} className="text-gray-400" />
                             )}
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
                                 <Camera size={24} className="text-white" />
                             </div>
                         </div>
+                        <button
+                            onClick={handleAvatarClick}
+                            type="button"
+                            className="mt-2 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition-colors"
+                        >
+                            <Camera size={12} /> Alterar Foto
+                        </button>
                         <input
                             ref={fileInputRef}
                             type="file"
@@ -253,10 +260,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ lang }) => {
                             aria-label="Upload avatar"
                         />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 text-center sm:text-left">
                         <h3 className="text-lg font-bold text-white">{profile.displayName || 'Usuário'}</h3>
                         <p className="text-gray-500 text-sm">{profile.email}</p>
-                        <p className="text-primary text-xs mt-2 flex items-center gap-1">
+                        <p className="text-primary text-xs mt-2 flex items-center justify-center sm:justify-start gap-1">
                             <Shield size={12} /> Conta verificada
                         </p>
                     </div>
