@@ -237,7 +237,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         if (!activeExchange) {
             // Fallback: calcular a partir dos assets (posições abertas)
             if (assets.length > 0) {
-                const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+                const assetPnls = assets.map(a => a.unrealizedPnL || 0).filter(p => p !== 0);
                 if (assetPnls.length > 0) {
                     const best = Math.max(...assetPnls);
                     const worst = Math.min(...assetPnls);
@@ -284,7 +284,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 setApiStats({ bestTrade: best, worstTrade: worst, winRate: wr, totalTrades: tradePnls.length, equityCurve: curve });
             } else {
                 // Usar dados de posições abertas como fallback
-                const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+                const assetPnls = assets.map(a => a.unrealizedPnL || 0).filter(p => p !== 0);
                 const fbBest = assetPnls.length > 0 ? Math.max(...assetPnls) : 0;
                 const fbWorst = assetPnls.length > 0 ? Math.min(...assetPnls) : 0;
                 const fbWins = assetPnls.filter(p => p > 0).length;
@@ -294,7 +294,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         } catch (e) {
             console.warn('[API STATS]', e);
             // Fallback: usar posições abertas
-            const assetPnls = assets.map(a => a.unrealizedProfit || 0).filter(p => p !== 0);
+            const assetPnls = assets.map(a => a.unrealizedPnL || 0).filter(p => p !== 0);
             if (assetPnls.length > 0) {
                 const best = Math.max(...assetPnls);
                 const worst = Math.min(...assetPnls);
