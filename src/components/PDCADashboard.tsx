@@ -152,13 +152,19 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
   }, [loadRealTrades]);
 
   // Auto-análise: quando ativado, roda imediato e atualiza a cada 5 min
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
+  const setProfilesRef = useRef(setProfiles);
+  setProfilesRef.current = setProfiles;
+
   useEffect(() => {
-    if (!autoEnabled || !setProfiles || profiles.length === 0) {
+    if (!autoEnabled || !setProfilesRef.current || profilesRef.current.length === 0) {
       if (autoTimerRef.current) clearInterval(autoTimerRef.current);
       return;
     }
 
     const runAutoAnalysis = async () => {
+      const currentProfiles = profilesRef.current;
       // Carregar trades reais
       const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
       if (activeExchange) {
@@ -171,7 +177,7 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
       // Analisar todos os perfis
       const realTrades = getRealTrades();
       const tradesByProfile: Record<string, any[]> = {};
-      const activeProfiles = profiles.filter(p => p.active);
+      const activeProfiles = currentProfiles.filter(p => p.active);
 
       if (realTrades.length > 0 && activeProfiles.length > 0) {
         const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
@@ -182,20 +188,22 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         });
       }
 
-      const results = analyzeAllProfiles(profiles, tradesByProfile);
+      const results = analyzeAllProfiles(currentProfiles, tradesByProfile);
       
-      // Mostrar resultados na tela em tempo real
+      // Mostrar resultados na tela (sem forçar expansão)
       setProfileResults(results);
-      setExpandedProfiles(new Set(results.map(r => r.profileId)));
 
       // Aplicar TODOS ajustes automaticamente
-      for (const result of results) {
-        if (result.suggestedChanges.length > 0) {
-          const { updatedProfile } = applyProfileChanges(
-            profiles.find(p => p.id === result.profileId)!,
-            result.suggestedChanges
-          );
-          setProfiles(prev => prev.map(p => p.id === result.profileId ? { ...p, ...updatedProfile } : p));
+      const setProfilesFn = setProfilesRef.current;
+      if (setProfilesFn) {
+        for (const result of results) {
+          if (result.suggestedChanges.length > 0) {
+            const { updatedProfile } = applyProfileChanges(
+              currentProfiles.find(p => p.id === result.profileId)!,
+              result.suggestedChanges
+            );
+            setProfilesFn(prev => prev.map(p => p.id === result.profileId ? { ...p, ...updatedProfile } : p));
+          }
         }
       }
 
@@ -207,7 +215,7 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
     // Atualizar a cada 5 minutos
     autoTimerRef.current = setInterval(runAutoAnalysis, 5 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoEnabled, exchanges, profiles, setProfiles]);
+  }, [autoEnabled, exchanges]);
 
   const handleToggleAuto = () => {
     const next = !autoEnabled;
