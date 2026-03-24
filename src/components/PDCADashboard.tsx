@@ -269,8 +269,16 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
       }
     };
 
-    // Rodar imediatamente ao ativar
-    runAutoAnalysis();
+    // Rodar imediatamente ao ativar — MAS evitar re-execução se rodou recentemente
+    const lastRun = parseInt(localStorage.getItem('pdca_last_auto_run') || '0');
+    const elapsed = Date.now() - lastRun;
+    if (elapsed > 4.5 * 60 * 1000) {
+      // Mais de 4.5 min desde última execução — rodar agora
+      runAutoAnalysis();
+    } else {
+      // Recente — só carregar os resultados existentes sem re-executar
+      console.log(`[PDCA] Última análise há ${Math.round(elapsed / 1000)}s, aguardando próximo ciclo`);
+    }
     // Atualizar a cada 5 minutos
     autoTimerRef.current = setInterval(runAutoAnalysis, 5 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
@@ -525,11 +533,16 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
               <Activity size={22} className="text-primary" /> Resultado da Análise por Perfil
             </h3>
-            {totalChanges > 0 && (
+            {totalChanges > 0 && !autoEnabled && (
               <button onClick={handleApplyAll}
                 className="px-5 py-2 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 font-bold text-sm flex items-center gap-2 hover:bg-green-500/30">
                 <CheckCircle size={16} /> Aplicar Todos ({totalChanges} ajustes)
               </button>
+            )}
+            {autoEnabled && totalChanges > 0 && (
+              <span className="text-green-400 text-sm flex items-center gap-2">
+                <CheckCircle size={16} /> Auto-aplicado a cada ciclo
+              </span>
             )}
           </div>
 

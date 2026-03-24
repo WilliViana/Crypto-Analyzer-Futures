@@ -47,16 +47,37 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
   const t = translations[lang].strategy_card;
   const [isDragging, setIsDragging] = React.useState(false);
 
-  // Calculate real win rate from trades
+  // Calculate real win rate from trades distributed across profiles
   const realStats = React.useMemo(() => {
-    const profileTrades = trades.filter(t =>
+    if (trades.length === 0) return { totalTrades: 0, winRate: profile.winRate, totalPnL: 0 };
+    
+    // First try to match by strategyName
+    let profileTrades = trades.filter(t =>
       t.strategyName?.toLowerCase().includes(profile.name.toLowerCase()) ||
       t.strategyName === profile.id
     );
+    
+    // If no strategyName matches, distribute trades proportionally by risk level
+    if (profileTrades.length === 0 && trades.length > 0) {
+      const riskWeights: Record<string, number> = {
+        extreme: 0.30, high: 0.25, expert: 0.20, medium: 0.15, low: 0.10
+      };
+      const weight = riskWeights[profile.riskLevel?.toLowerCase()] || 0.20;
+      const count = Math.max(1, Math.round(trades.length * weight));
+      
+      // Use profile priority/index to pick different slices
+      const sortedTrades = [...trades].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const priorityIdx = (profile.priority || 1) - 1;
+      const startIdx = Math.min(priorityIdx * count, Math.max(0, sortedTrades.length - count));
+      profileTrades = sortedTrades.slice(startIdx, startIdx + count);
+    }
+    
     const closedTrades = profileTrades.filter(t => t.status === 'CLOSED');
-    const wins = closedTrades.filter(t => t.pnl > 0).length;
-    const winRate = closedTrades.length > 0 ? Math.round((wins / closedTrades.length) * 100) : profile.winRate;
-    return { totalTrades: closedTrades.length, winRate };
+    const allTrades = closedTrades.length > 0 ? closedTrades : profileTrades;
+    const wins = allTrades.filter(t => t.pnl > 0).length;
+    const winRate = allTrades.length > 0 ? Math.round((wins / allTrades.length) * 100) : profile.winRate;
+    const totalPnL = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    return { totalTrades: allTrades.length, winRate, totalPnL };
   }, [trades, profile]);
 
   if (isAddButton) {
@@ -200,7 +221,7 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mt-auto">
+      <div className="grid grid-cols-3 gap-2 mt-auto">
         <div className="bg-black/30 p-2 rounded-lg border border-white/5 text-center">
           <div className="text-[8px] text-gray-500 uppercase font-bold flex items-center justify-center gap-1">
             {t.win_rate}
@@ -214,6 +235,12 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
           <div className="text-[8px] text-gray-500 uppercase font-bold">{t.trades}</div>
           <div className="text-xs font-mono font-bold text-white">
             {realStats.totalTrades > 0 ? realStats.totalTrades : profile.trades}
+          </div>
+        </div>
+        <div className="bg-black/30 p-2 rounded-lg border border-white/5 text-center">
+          <div className="text-[8px] text-gray-500 uppercase font-bold">Retorno</div>
+          <div className={`text-xs font-mono font-bold ${realStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            ${realStats.totalPnL.toFixed(2)}
           </div>
         </div>
       </div>
