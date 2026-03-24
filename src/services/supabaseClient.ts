@@ -27,25 +27,36 @@ const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise
         }
     }
 
-    // Send everything as a simple POST to the proxy — no query params in the URL
-    const res = await fetch(PROXY_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            targetUrl: url,
-            targetMethod: method,
-            targetHeaders: headers,
-            targetBody: init?.body || null,
-        }),
-    });
+    // Try proxy first, fallback to direct Supabase call
+    try {
+        const res = await fetch(PROXY_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                targetUrl: url,
+                targetMethod: method,
+                targetHeaders: headers,
+                targetBody: init?.body || null,
+            }),
+        });
 
-    return res;
+        // If proxy works, return it
+        if (res.ok || res.status === 201 || res.status === 204) return res;
+        
+        // If proxy returns error (405, 402, etc), fallback to direct
+        console.warn(`[SUPABASE] Proxy failed (${res.status}), using direct connection...`);
+    } catch (e) {
+        console.warn('[SUPABASE] Proxy unavailable, using direct connection...');
+    }
+
+    // Fallback: call Supabase directly
+    return fetch(url, { ...init, method, headers });
 };
 
 export const SUPABASE_URL: string = DIRECT_SUPABASE_URL;
 export const SUPABASE_ANON_KEY: string = ANON_KEY;
 
-// In production, use proxyFetch to route all traffic through serverless proxy as POST
+// Use proxyFetch with fallback in production, direct in dev
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
         persistSession: true,
