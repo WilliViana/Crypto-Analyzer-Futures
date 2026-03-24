@@ -28,13 +28,27 @@ export async function callBinanceProxy(endpoint: string, method: string, params:
       : `Bearer ${SUPABASE_ANON_KEY}`,
   };
 
-  // In production: use Vercel proxy to bypass ISP/WAF block
+  // In production: try Vercel proxy first, fallback to direct Supabase Edge Function
   const isDev = (import.meta as any).env?.DEV === true;
-  const proxyUrl = isDev ? edgeFunctionUrl : `${window.location.origin}/api/supabase`;
+  
+  if (isDev) {
+    // Dev: call Edge Function directly
+    const response = await fetch(edgeFunctionUrl, { method: 'POST', headers: targetHeaders, body: JSON.stringify(payload) });
+    if (!response.ok) {
+      const txt = await response.text();
+      console.error("[PROXY FAIL]", response.status, txt);
+      throw new Error(`Proxy (${response.status}): ${txt}`);
+    }
+    const data = await response.json();
+    if (data.code && data.code !== 200) throw new Error(`${exchange.name || 'Exchange'}: ${data.msg || JSON.stringify(data)}`);
+    return data;
+  }
 
-  const response = isDev
-    ? await fetch(edgeFunctionUrl, { method: 'POST', headers: targetHeaders, body: JSON.stringify(payload) })
-    : await fetch(proxyUrl, {
+  // Production: try Vercel proxy, fallback to direct
+  const proxyUrl = `${window.location.origin}/api/supabase`;
+  
+  try {
+    const response = await fetch(proxyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -45,17 +59,33 @@ export async function callBinanceProxy(endpoint: string, method: string, params:
       }),
     });
 
-  if (!response.ok) {
-    const txt = await response.text();
-    console.error("[PROXY FAIL]", response.status, txt);
-    throw new Error(`Proxy (${response.status}): ${txt}`);
-  }
+    if (!response.ok) {
+      console.warn(`[PROXY] Vercel proxy failed (${response.status}), trying direct Supabase...`);
+      throw new Error(`Vercel proxy: ${response.status}`);
+    }
 
-  const data = await response.json();
-  if (data.code && data.code !== 200) {
-    throw new Error(`${exchange.name || 'Exchange'}: ${data.msg || JSON.stringify(data)}`);
+    const data = await response.json();
+    if (data.code && data.code !== 200) throw new Error(`${exchange.name || 'Exchange'}: ${data.msg || JSON.stringify(data)}`);
+    return data;
+  } catch (proxyError) {
+    // Fallback: call Supabase Edge Function directly
+    console.log('[PROXY] Fallback: calling Supabase Edge Function directly...');
+    const directResponse = await fetch(edgeFunctionUrl, { 
+      method: 'POST', 
+      headers: targetHeaders, 
+      body: JSON.stringify(payload) 
+    });
+
+    if (!directResponse.ok) {
+      const txt = await directResponse.text();
+      console.error("[DIRECT FAIL]", directResponse.status, txt);
+      throw new Error(`Direct (${directResponse.status}): ${txt}`);
+    }
+
+    const data = await directResponse.json();
+    if (data.code && data.code !== 200) throw new Error(`${exchange.name || 'Exchange'}: ${data.msg || JSON.stringify(data)}`);
+    return data;
   }
-  return data;
 }
 
 export const fetchMarketInfo = async (exchange: Exchange) => {
