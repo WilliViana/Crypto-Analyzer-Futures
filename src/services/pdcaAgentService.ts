@@ -437,9 +437,36 @@ export function analyzeProfile(
     }
   }
 
-  // --- SEM TRADES ---
+  // --- PERFIS SEM ORDENS — DETECÇÃO DE INATIVIDADE ---
   if (totalTrades === 0) {
-    reasoning.push(`📊 Sem trades recentes para análise. Usando dados do capital atual como referência.`);
+    reasoning.push(`🚨 ALERTA: Perfil "${profile.name}" não abriu NENHUMA ordem! Com 549 ativos monitorados, é muito improvável não encontrar oportunidades.`);
+    reasoning.push(`🔍 Diagnóstico: Provável que o Threshold de Confiança está muito alto (${profile.confidenceThreshold}%) ou o Stop Loss muito apertado (${profile.stopLoss}%).`);
+    
+    // Reduzir threshold de confiança para aceitar mais sinais
+    if (profile.confidenceThreshold > personality.confidenceRange[0]) {
+      const newConf = Math.max(personality.confidenceRange[0], profile.confidenceThreshold - 15);
+      changes.push({
+        field: 'confidenceThreshold', fieldLabel: 'Threshold de Confiança %',
+        currentValue: profile.confidenceThreshold, newValue: newConf,
+        reason: `⚡ SEM ORDENS! Reduzir threshold de ${profile.confidenceThreshold}% → ${newConf}% para capturar oportunidades que estão sendo ignoradas.`,
+        impact: 'warning', selected: true,
+      });
+    }
+    
+    // Aumentar margem se muito baixa
+    if (profile.marginPerTrade < personality.marginRange[1] * 0.5) {
+      const newMargin = Math.round(profile.marginPerTrade * 1.5);
+      changes.push({
+        field: 'marginPerTrade', fieldLabel: 'Margem por Trade (USDT)',
+        currentValue: profile.marginPerTrade, newValue: Math.min(newMargin, personality.marginRange[1]),
+        reason: `💰 Margem muito baixa pode limitar pares disponíveis. Aumentar para ampliar oportunidades.`,
+        impact: 'warning', selected: true,
+      });
+    }
+    
+    // Score muito baixo para forçar ação
+    score = 15;
+    reasoning.push(`⚙️ AÇÃO PDCA: Parâmetros serão ajustados automaticamente para forçar entradas. Próxima análise verificará se novas oportunidades foram identificadas.`);
   }
 
   // PnL real = currentCapital - capital original

@@ -85,6 +85,47 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
   // Profile analysis state
   const [profileResults, setProfileResults] = useState<ProfileAnalysisResult[] | null>(null);
   const [expandedProfiles, setExpandedProfiles] = useState<Set<string>>(new Set());
+  const [nextAnalysisIn, setNextAnalysisIn] = useState<string>('');
+  const [pdcaPhase, setPdcaPhase] = useState<string>('IDLE');
+  const [cycleCount, setCycleCount] = useState<number>(() => {
+    return parseInt(localStorage.getItem('pdca_cycle_count') || '0');
+  });
+
+  // Reset diário às 21:00 e countdown
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const lastAutoRun = parseInt(localStorage.getItem('pdca_last_auto_run') || '0');
+      
+      if (autoEnabled && lastAutoRun > 0) {
+        const nextRun = lastAutoRun + 5 * 60 * 1000; // 5 min
+        const remaining = nextRun - Date.now();
+        if (remaining > 0) {
+          const mins = Math.floor(remaining / 60000);
+          const secs = Math.floor((remaining % 60000) / 1000);
+          setNextAnalysisIn(`${mins}m ${secs}s`);
+        } else {
+          setNextAnalysisIn('Executando...');
+        }
+      }
+
+      // Reset diário às 21:00
+      const resetHour = 21;
+      const resetTime = new Date(now);
+      resetTime.setHours(resetHour, 0, 0, 0);
+      if (now > resetTime) resetTime.setDate(resetTime.getDate() + 1);
+      const untilReset = resetTime.getTime() - now.getTime();
+      const hrsUntilReset = Math.floor(untilReset / 3600000);
+      const minsUntilReset = Math.floor((untilReset % 3600000) / 60000);
+      setNextAnalysisIn(prev => {
+        if (!autoEnabled) return `Reset: ${hrsUntilReset}h ${minsUntilReset}min`;
+        return prev;
+      });
+    };
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [autoEnabled]);
 
   useEffect(() => {
     const unsub = onAgentsChange(setAgents);
@@ -207,7 +248,25 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         }
       }
 
+      // Incrementar contador de ciclos
+      setCycleCount(prev => {
+        const next = prev + 1;
+        localStorage.setItem('pdca_cycle_count', next.toString());
+        return next;
+      });
+
       localStorage.setItem('pdca_last_auto_run', Date.now().toString());
+      
+      // Verificar reset diário às 21:00
+      const now = new Date();
+      const lastReset = localStorage.getItem('pdca_last_daily_reset');
+      const todayReset = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      if (now.getHours() >= 21 && lastReset !== todayReset) {
+        localStorage.setItem('pdca_last_daily_reset', todayReset);
+        setCycleCount(0);
+        localStorage.setItem('pdca_cycle_count', '0');
+        console.log('[PDCA] 🔄 Reset diário às 21:00 executado');
+      }
     };
 
     // Rodar imediatamente ao ativar
@@ -390,11 +449,42 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
         </div>
 
         {autoEnabled && (
-          <div className="mt-3 p-3 bg-green-500/10 rounded-xl border border-green-500/20">
-            <p className="text-green-300 text-sm">
-              ⏰ <strong>Modo Automático Ativo</strong> — A cada 24h o sistema analisa todos os perfis, calcula ajustes e aplica automaticamente.
-              Cada perfil compete para maximizar lucros conforme sua personalidade de investidor.
-            </p>
+          <div className="mt-3 p-4 bg-green-500/10 rounded-xl border border-green-500/20 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-green-300 text-sm">
+                ⏰ <strong>Modo Automático Ativo</strong> — Ciclo PDCA a cada 5 min. Reset diário às <strong>21:00h</strong>.
+              </p>
+              <div className="flex items-center gap-3">
+                <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-lg">🔄 Ciclos: {cycleCount}</span>
+                {nextAnalysisIn && (
+                  <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-lg">⏱ Próxima: {nextAnalysisIn}</span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="bg-blue-500/10 p-2 rounded-lg text-center border border-blue-500/20">
+                <div className="text-blue-400 font-bold">📋 PLAN</div>
+                <div className="text-gray-400">Analisar histórico de trades de cada perfil</div>
+              </div>
+              <div className="bg-yellow-500/10 p-2 rounded-lg text-center border border-yellow-500/20">
+                <div className="text-yellow-400 font-bold">⚡ DO</div>
+                <div className="text-gray-400">Calcular ajustes e aplicar nos perfis</div>
+              </div>
+              <div className="bg-purple-500/10 p-2 rounded-lg text-center border border-purple-500/20">
+                <div className="text-purple-400 font-bold">🔍 CHECK</div>
+                <div className="text-gray-400">Detectar perfis inativos sem ordens</div>
+              </div>
+              <div className="bg-green-500/10 p-2 rounded-lg text-center border border-green-500/20">
+                <div className="text-green-400 font-bold">✅ ACT</div>
+                <div className="text-gray-400">Ranking competitivo e otimização</div>
+              </div>
+            </div>
+            {profiles.filter(p => p.active && p.trades === 0).length > 0 && (
+              <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20 text-red-300 text-sm">
+                🚨 <strong>ALERTA:</strong> {profiles.filter(p => p.active && p.trades === 0).length} perfil(is) ativo(s) sem nenhuma ordem aberta!
+                O sistema está ajustando parâmetros automaticamente para forçar entradas.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -416,8 +506,15 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
           <div className="text-sm text-gray-400 mt-1">PnL Total Perfis</div>
         </div>
         <div className="bg-surface rounded-2xl border border-card-border p-5 text-center">
-          <div className="text-3xl font-black text-cyan-400">{totalChanges}</div>
-          <div className="text-sm text-gray-400 mt-1">Ajustes Pendentes</div>
+          <div className={`text-3xl font-black ${profiles.filter(p => p.active && p.trades === 0).length > 0 ? 'text-red-400' : 'text-cyan-400'}`}>
+            {profiles.filter(p => p.active && p.trades === 0).length > 0
+              ? `${profiles.filter(p => p.active && p.trades === 0).length} ⚠️`
+              : totalChanges
+            }
+          </div>
+          <div className="text-sm text-gray-400 mt-1">
+            {profiles.filter(p => p.active && p.trades === 0).length > 0 ? 'Perfis sem Ordens' : 'Ajustes Pendentes'}
+          </div>
         </div>
       </div>
 
