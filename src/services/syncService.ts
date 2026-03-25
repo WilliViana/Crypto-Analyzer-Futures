@@ -239,7 +239,7 @@ export const updateTrade = async (tradeId: string, updates: Partial<{ status: st
 
 // ============ USER SETTINGS ============
 
-export const loadUserSettings = async (userId: string, signal?: AbortSignal): Promise<{ selectedPairs: string[], isRunning: boolean } | null> => {
+export const loadUserSettings = async (userId: string, signal?: AbortSignal): Promise<any | null> => {
     try {
         const query = supabase
             .from('user_settings')
@@ -257,9 +257,20 @@ export const loadUserSettings = async (userId: string, signal?: AbortSignal): Pr
         }
         if (!data) return null;
 
+        // Parse extra_settings JSON if exists
+        let extra: any = {};
+        try {
+            if ((data as any).extra_settings) {
+                extra = typeof (data as any).extra_settings === 'string' 
+                    ? JSON.parse((data as any).extra_settings) 
+                    : (data as any).extra_settings;
+            }
+        } catch { extra = {}; }
+
         return {
             selectedPairs: data.selected_pairs || ['BTCUSDT'],
-            isRunning: (data as any).is_running || false
+            isRunning: (data as any).is_running || false,
+            ...extra,
         };
     } catch (error: any) {
         if (error.name === 'AbortError') return null;
@@ -268,8 +279,12 @@ export const loadUserSettings = async (userId: string, signal?: AbortSignal): Pr
     }
 };
 
-export const saveUserSettings = async (userId: string, settings: { selectedPairs: string[], isRunning: boolean }): Promise<boolean> => {
+export const saveUserSettings = async (userId: string, settings: any): Promise<boolean> => {
     try {
+        // Separate core settings from extra
+        const { selectedPairs, isRunning, ...extraSettings } = settings;
+        const extraJson = JSON.stringify(extraSettings);
+
         // Check if settings already exist for this user
         const { data: existing } = await supabase
             .from('user_settings')
@@ -282,8 +297,9 @@ export const saveUserSettings = async (userId: string, settings: { selectedPairs
             const { error } = await supabase
                 .from('user_settings')
                 .update({
-                    selected_pairs: settings.selectedPairs,
-                    is_running: settings.isRunning,
+                    selected_pairs: selectedPairs,
+                    is_running: isRunning,
+                    extra_settings: extraJson,
                     updated_at: new Date().toISOString()
                 } as any)
                 .eq('user_id', userId);
@@ -297,8 +313,9 @@ export const saveUserSettings = async (userId: string, settings: { selectedPairs
                 .from('user_settings')
                 .insert({
                     user_id: userId,
-                    selected_pairs: settings.selectedPairs,
-                    is_running: settings.isRunning,
+                    selected_pairs: selectedPairs,
+                    is_running: isRunning,
+                    extra_settings: extraJson,
                     updated_at: new Date().toISOString()
                 } as any);
             if (error) {

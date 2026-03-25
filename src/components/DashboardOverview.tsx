@@ -37,6 +37,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     riskMode = 'general', dailyStopLossPct = 5, consecutiveLosses = 0, circuitBreakerActive = false
 }) => {
     const [sessionHistory, setSessionHistory] = useState<{ time: string, value: number }[]>([]);
+    const [dailyTargetEnabledState, setDailyTargetEnabledState] = useState<boolean>(() => {
+        try { return JSON.parse(localStorage.getItem('cap_daily_target_enabled') || 'true'); } catch { return true; }
+    });
     const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT');
     const [showChart, setShowChart] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -883,7 +886,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {(isWidgetVisible('dailyTarget') || isWidgetVisible('dailyBalance')) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Meta Diária Card */}
-                {isWidgetVisible('dailyTarget') && (
+                {isWidgetVisible('dailyTarget') && (() => {
+                    const dailyTargetEnabled = dailyTargetEnabledState;
+                    const toggleDailyTarget = () => {
+                        const next = !dailyTargetEnabledState;
+                        setDailyTargetEnabledState(next);
+                        localStorage.setItem('cap_daily_target_enabled', JSON.stringify(next));
+                    };
+                    return (
                 <div className="bg-surface border border-card-border rounded-xl p-4 shadow-lg">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -891,6 +901,21 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             Meta Diária de Ganho
                         </h3>
                         <div className="flex items-center gap-2">
+                            {/* Toggle Ativar/Desativar */}
+                            <button
+                                onClick={toggleDailyTarget}
+                                className="flex items-center gap-1.5 cursor-pointer focus:outline-none"
+                                title={dailyTargetEnabled ? "Desativar Meta Diária" : "Ativar Meta Diária"}
+                            >
+                                <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-300 ${dailyTargetEnabled ? 'bg-green-500' : 'bg-gray-700'}`}>
+                                    <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform duration-300 ${dailyTargetEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                </div>
+                                <span className={`text-[9px] font-bold ${dailyTargetEnabled ? 'text-green-400' : 'text-gray-500'}`}>
+                                    {dailyTargetEnabled ? 'ON' : 'OFF'}
+                                </span>
+                            </button>
+                            {dailyTargetEnabled && (
+                            <>
                             <input
                                 type="number"
                                 min="1"
@@ -901,8 +926,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                 className="w-16 bg-black/30 border border-gray-600 rounded px-2 py-1 text-white text-xs font-mono text-center"
                             />
                             <span className="text-gray-500 text-xs">%</span>
+                            </>
+                            )}
                         </div>
                     </div>
+                    {!dailyTargetEnabled ? (
+                        <div className="text-center py-3 text-gray-500 text-sm">Meta Diária desativada</div>
+                    ) : (
+                    <>
                     {(() => {
                         const currentPnlPct = dailyStartBalance > 0 ? ((totalBalance - dailyStartBalance) / dailyStartBalance) * 100 : 0;
                         const progressPct = Math.min((currentPnlPct / dailyTargetPct) * 100, 100);
@@ -928,8 +959,11 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             </div>
                         );
                     })()}
+                    </>
+                    )}
                 </div>
-                )}
+                    );
+                })()}
 
                 {/* Saldo Inicial do Dia */}
                 {isWidgetVisible('dailyBalance') && (

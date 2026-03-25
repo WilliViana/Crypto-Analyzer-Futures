@@ -27,7 +27,7 @@ import { initNotificationService, getUnreadCount } from './services/notification
 import { recordAgentTrade, initPDCAService } from './services/pdcaAgentService';
 
 import { fetchHistoricalCandles } from './services/marketService';
-import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy, fetchSpotBalance } from './services/exchangeService';
+import { fetchRealAccountData, executeOrder, fetchMarketInfo, callBinanceProxy, fetchSpotBalance, fetchTradeHistory } from './services/exchangeService';
 import { unifiedTechnicalAnalysis } from './utils/technicalAnalysis';
 import { quickTrendCheck } from './services/multiTimeframeService';
 import { analyzeVolatility, type RiskProfile } from './utils/volatilityFilter';
@@ -176,14 +176,27 @@ export default function App() {
     });
   }, [profiles]);
 
-  // Auto-save user settings (selectedPairs + isRunning) to Supabase
+  // Auto-save user settings (todas as configurações) to Supabase
   useEffect(() => {
     if (!dataLoadedRef.current || !session?.user?.id) {
       return;
     }
 
-    // Create settings object to check for changes
-    const currentSettings = { selectedPairs, isRunning };
+    // Create settings object with ALL configs
+    const visibleWidgets = (() => { try { return JSON.parse(localStorage.getItem('dashWidgets') || 'null'); } catch { return null; } })();
+    const autoEnabled = (() => { try { return JSON.parse(localStorage.getItem('pdca_auto_enabled') || 'null'); } catch { return null; } })();
+    const dailyTargetEnabled = (() => { try { return JSON.parse(localStorage.getItem('cap_daily_target_enabled') || 'null'); } catch { return null; } })();
+
+    const currentSettings: any = {
+      selectedPairs,
+      isRunning,
+      dailyTargetPct,
+      dailyStopLossPct,
+      riskMode,
+      ...(visibleWidgets && { visibleWidgets }),
+      ...(autoEnabled !== null && { autoEnabled }),
+      ...(dailyTargetEnabled !== null && { dailyTargetEnabled }),
+    };
     const settingsJson = JSON.stringify(currentSettings);
 
     if (settingsJson === lastSavedSettingsRef.current) {
@@ -191,11 +204,11 @@ export default function App() {
     }
     lastSavedSettingsRef.current = settingsJson;
 
-    console.log('[SYNC] Saving settings to Supabase...', currentSettings);
+    console.log('[SYNC] Saving expanded settings to Supabase...');
     saveUserSettings(session.user.id, currentSettings).catch(err =>
       console.error('[SYNC] Save settings error:', err)
     );
-  }, [selectedPairs, isRunning]);
+  }, [selectedPairs, isRunning, dailyTargetPct, dailyStopLossPct, riskMode]);
 
   useEffect(() => {
     let mounted = true;
@@ -241,9 +254,17 @@ export default function App() {
             setProfiles([...userData.strategies, ...missingDefaults]);
           }
           if (userData.trades.length > 0) setTrades(userData.trades);
-          if (userData.settings) {
-            if (userData.settings.selectedPairs?.length > 0) setSelectedPairs(userData.settings.selectedPairs);
-            if (userData.settings.isRunning !== undefined) setIsRunning(userData.settings.isRunning);
+          const s = userData.settings as any;
+          if (s) {
+            if (s.selectedPairs?.length > 0) setSelectedPairs(s.selectedPairs);
+            if (s.isRunning !== undefined) setIsRunning(s.isRunning);
+            // Restaurar configurações persistidas do Supabase para localStorage
+            if (s.visibleWidgets) localStorage.setItem('dashWidgets', JSON.stringify(s.visibleWidgets));
+            if (s.autoEnabled !== undefined) localStorage.setItem('pdca_auto_enabled', JSON.stringify(s.autoEnabled));
+            if (s.dailyTargetPct !== undefined) { setDailyTargetPct(s.dailyTargetPct); localStorage.setItem('cap_daily_target', s.dailyTargetPct.toString()); }
+            if (s.dailyTargetEnabled !== undefined) localStorage.setItem('cap_daily_target_enabled', JSON.stringify(s.dailyTargetEnabled));
+            if (s.riskMode) { setRiskMode(s.riskMode); localStorage.setItem('cap_risk_mode', s.riskMode); }
+            if (s.dailyStopLossPct !== undefined) { setDailyStopLossPct(s.dailyStopLossPct); localStorage.setItem('cap_daily_stoploss', s.dailyStopLossPct.toString()); }
           }
 
           // Initialize lastSaved refs to prevent immediate re-save after load
@@ -355,6 +376,53 @@ export default function App() {
     if (isAuthenticated && exchanges.length > 0) {
       loadMarketInfo();
     }
+  }, [isAuthenticated, exchanges]);
+
+  // Auto-load real trades from connected exchange
+  const tradesLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated || exchanges.length === 0) return;
+    const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+    if (!activeExchange) return;
+
+    const loadExchangeTrades = async () => {
+      try {
+        console.log('[TRADES] Loading real trades from exchange...');
+        const rawTrades = await fetchTradeHistory(activeExchange);
+        if (rawTrades.length > 0) {
+          // Convert exchange format to Trade[] format
+          const converted: Trade[] = rawTrades.map((t, idx) => ({
+            id: `ex_${t.time}_${idx}`,
+            symbol: t.symbol,
+            side: (t.side === 'BUY' ? 'LONG' : 'SHORT') as 'LONG' | 'SHORT',
+            entryPrice: t.price || 0,
+            exitPrice: t.price || 0,
+            amount: t.qty || 0,
+            pnl: t.realizedPnl || t.pnl || 0,
+            status: 'CLOSED' as const,
+            timestamp: new Date(t.time).toISOString(),
+            strategyId: '',
+          }));
+          setTrades(prev => {
+            // Merge: keep existing trades, add new ones by unique id
+            const existingIds = new Set(prev.map(t => t.id));
+            const newTrades = converted.filter(t => !existingIds.has(t.id));
+            const merged = [...prev, ...newTrades];
+            console.log(`[TRADES] Loaded ${newTrades.length} new trades (total: ${merged.length})`);
+            return merged;
+          });
+          tradesLoadedRef.current = true;
+        }
+      } catch (err) {
+        console.error('[TRADES] Error loading exchange trades:', err);
+      }
+    };
+
+    // Load on mount
+    if (!tradesLoadedRef.current) loadExchangeTrades();
+    // Refresh every 5 minutes
+    const timer = setInterval(loadExchangeTrades, 5 * 60 * 1000);
+    return () => clearInterval(timer);
   }, [isAuthenticated, exchanges]);
 
   // Refs for stable access inside scanMarket
