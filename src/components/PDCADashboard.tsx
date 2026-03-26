@@ -2,7 +2,7 @@
  * PDCA Dashboard — Painel visual dos Agentes de IA integrado com Perfis do Motor
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X, Shield, Rocket, Crown, Settings, ArrowRight, Trophy, RotateCcw } from 'lucide-react';
+import { Bot, TrendingUp, TrendingDown, Award, Zap, Brain, Target, Activity, ChevronDown, ChevronUp, Clock, CheckCircle, RefreshCw, Power, Info, Check, X, Shield, Rocket, Crown, Settings, ArrowRight, Trophy, RotateCcw, Crosshair, ToggleLeft, ToggleRight } from 'lucide-react';
 import {
   AIAgent,
   getAgents,
@@ -42,6 +42,7 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   bold: <Rocket size={20} className="text-orange-400" />,
   specialist: <Brain size={20} className="text-purple-400" />,
   alpha: <Zap size={20} className="text-red-400" />,
+  manus: <Crosshair size={20} className="text-cyan-400" />,
 };
 
 const PROFILE_COLORS: Record<string, string> = {
@@ -50,6 +51,7 @@ const PROFILE_COLORS: Record<string, string> = {
   bold: 'border-orange-500/30 bg-orange-500/5',
   specialist: 'border-purple-500/30 bg-purple-500/5',
   alpha: 'border-red-500/30 bg-red-500/5',
+  manus: 'border-cyan-500/30 bg-cyan-500/5',
 };
 
 function timeAgo(ts: number | null): string {
@@ -90,6 +92,52 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
   const [cycleCount, setCycleCount] = useState<number>(() => {
     return parseInt(localStorage.getItem('pdca_cycle_count') || '0');
   });
+
+  // Perfis selecionados para o ciclo PDCA (persistido no localStorage)
+  const [pdcaSelectedProfiles, setPdcaSelectedProfiles] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('pdca_selected_profiles');
+      if (stored) return new Set(JSON.parse(stored));
+    } catch { }
+    // Default: todos os perfis ativos
+    return new Set(profiles.filter(p => p.active).map(p => p.id));
+  });
+
+  // Sincronizar com novos perfis que aparecem
+  useEffect(() => {
+    setPdcaSelectedProfiles(prev => {
+      const updated = new Set(prev);
+      let changed = false;
+      profiles.forEach(p => {
+        if (p.active && !updated.has(p.id) && prev.size === 0) {
+          updated.add(p.id);
+          changed = true;
+        }
+      });
+      if (changed) localStorage.setItem('pdca_selected_profiles', JSON.stringify([...updated]));
+      return changed ? updated : prev;
+    });
+  }, [profiles]);
+
+  const togglePdcaProfile = (id: string) => {
+    setPdcaSelectedProfiles(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      localStorage.setItem('pdca_selected_profiles', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const selectAllPdcaProfiles = () => {
+    const allIds = new Set(profiles.map(p => p.id));
+    setPdcaSelectedProfiles(allIds);
+    localStorage.setItem('pdca_selected_profiles', JSON.stringify([...allIds]));
+  };
+
+  const deselectAllPdcaProfiles = () => {
+    setPdcaSelectedProfiles(new Set());
+    localStorage.setItem('pdca_selected_profiles', JSON.stringify([]));
+  };
 
   // Reset diário às 21:00 e countdown
   useEffect(() => {
@@ -218,7 +266,7 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
       // Analisar todos os perfis
       const realTrades = getRealTrades();
       const tradesByProfile: Record<string, any[]> = {};
-      const activeProfiles = currentProfiles.filter(p => p.active);
+      const activeProfiles = currentProfiles.filter(p => p.active && pdcaSelectedProfiles.has(p.id));
 
       if (realTrades.length > 0 && activeProfiles.length > 0) {
         const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
@@ -282,7 +330,7 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
     // Atualizar a cada 5 minutos
     autoTimerRef.current = setInterval(runAutoAnalysis, 5 * 60 * 1000);
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoEnabled, exchanges]);
+  }, [autoEnabled, exchanges, pdcaSelectedProfiles]);
 
   const handleToggleAuto = () => {
     const next = !autoEnabled;
@@ -301,7 +349,7 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
 
       const realTrades = getRealTrades();
       const tradesByProfile: Record<string, any[]> = {};
-      const activeProfiles = profiles.filter(p => p.active);
+      const activeProfiles = profiles.filter(p => p.active && pdcaSelectedProfiles.has(p.id));
 
       if (realTrades.length > 0 && activeProfiles.length > 0) {
         const tradesPerProfile = Math.ceil(realTrades.length / activeProfiles.length);
@@ -495,6 +543,65 @@ export default function PDCADashboard({ exchanges = [], assets = [], profiles = 
             )}
           </div>
         )}
+      </div>
+
+      {/* Seleção de Perfis para PDCA */}
+      <div className="bg-surface rounded-2xl border border-card-border p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Settings size={20} className="text-primary" /> Perfis no Ciclo PDCA
+          </h3>
+          <div className="flex items-center gap-2">
+            <button onClick={selectAllPdcaProfiles} className="px-3 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors">
+              Selecionar Todos
+            </button>
+            <button onClick={deselectAllPdcaProfiles} className="px-3 py-1 rounded-lg text-xs font-bold bg-gray-500/10 text-gray-400 border border-gray-500/20 hover:bg-gray-500/20 transition-colors">
+              Desmarcar Todos
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">Selecione quais perfis serão analisados e ajustados pelo ciclo PDCA. Perfis não selecionados serão mantidos sem alterações.</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {profiles.map(p => {
+            const isSelected = pdcaSelectedProfiles.has(p.id);
+            const baseId = p.id.split('_')[0].toLowerCase();
+            const icon = PROFILE_ICONS[baseId] || <Target size={18} />;
+            const hasNoTrades = p.active && p.trades === 0;
+            return (
+              <button
+                key={p.id}
+                onClick={() => togglePdcaProfile(p.id)}
+                className={`p-3 rounded-xl border transition-all duration-200 flex items-center gap-3 text-left ${
+                  isSelected
+                    ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/5'
+                    : 'border-card-border bg-black/20 opacity-60 hover:opacity-80'
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${isSelected ? 'bg-primary/20' : 'bg-gray-700/50'}`}>
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold text-sm truncate ${isSelected ? 'text-white' : 'text-gray-500'}`}>{p.name}</span>
+                    {hasNoTrades && <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full font-bold shrink-0">0 ordens</span>}
+                  </div>
+                  <div className="text-[10px] text-gray-500">{p.riskLevel} • {p.leverage}x • {p.active ? '🟢 Ativo' : '⚫ Inativo'}</div>
+                </div>
+                <div className="shrink-0">
+                  {isSelected ? <ToggleRight size={20} className="text-primary" /> : <ToggleLeft size={20} className="text-gray-600" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {pdcaSelectedProfiles.size === 0 && (
+          <div className="mt-3 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20 text-yellow-300 text-sm">
+            ⚠️ Nenhum perfil selecionado. O ciclo PDCA não analisará nenhum perfil.
+          </div>
+        )}
+        <div className="mt-3 text-xs text-gray-500 text-right">
+          {pdcaSelectedProfiles.size}/{profiles.length} perfis selecionados para otimização
+        </div>
       </div>
 
       {/* Metrics Cards */}
