@@ -34,7 +34,7 @@ import { analyzeVolatility, type RiskProfile } from './utils/volatilityFilter';
 import { calculateVPM, type ProfileRisk } from './utils/vpmCalculator';
 import { analyzeSentimentThrottled, generateTradingRecommendation } from './services/sentimentService';
 import { supabase } from './services/supabaseClient';
-import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings } from './services/syncService';
+import { loadAllUserData, saveExchange, deleteExchange, saveStrategy, saveUserSettings, saveTrade } from './services/syncService';
 import { useNotification } from './contexts/NotificationContext';
 import { Play, Square, Settings, Loader2, LayoutDashboard, Wallet, History, Menu, Layers, LineChart, FileText, ShieldAlert, Bell } from 'lucide-react';
 
@@ -57,6 +57,7 @@ const INITIAL_PROFILES_BASE: StrategyProfile[] = [
   { id: StrategyType.BOLD, name: 'Ousado', description: 'Alto Risco', icon: 'rocket', color: 'orange', riskLevel: 'High', confidenceThreshold: 50, leverage: 10, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 30, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 10, takeProfit: 20, maxDrawdown: 20, workflowSteps: ['Breakout', 'High Volatility'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 3 },
   { id: StrategyType.SPECIALIST, name: 'Especialista', description: 'Expert', icon: 'target', color: 'purple', riskLevel: 'Expert', confidenceThreshold: 85, leverage: 20, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 25, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 5, takeProfit: 15, maxDrawdown: 15, workflowSteps: ['Fibonacci', 'Order Flow'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 4 },
   { id: StrategyType.ALPHA, name: 'Alpha Predator', description: 'Extremo', icon: 'zap', color: 'red', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 50, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: true, stopLoss: 2, takeProfit: 4, maxDrawdown: 30, workflowSteps: ['HFT Algo', 'Liquidation Hunt'], indicators: DEFAULT_INDICATORS, useDivergences: true, useCandlePatterns: true, priority: 5 },
+  { id: 'manus', name: 'Manus', description: 'Juros Compostos 8%/dia — Sniper', icon: 'crosshair', color: 'cyan', riskLevel: 'Extreme', confidenceThreshold: 50, leverage: 25, capital: 100.00, currentCapital: 100.00, allocatedCapital: 0, marginPerTrade: 20, pnl: 0, trades: 0, winRate: 0, active: false, stopLoss: 2, takeProfit: 8, maxDrawdown: 30, workflowSteps: ['Mean Reversion', 'Bollinger + RSI', 'Volume Confirm'], indicators: { rsi: { enabled: true, weight: 25 }, bollinger: { enabled: true, weight: 25 }, volume: { enabled: true, weight: 20 }, macd: { enabled: true, weight: 15 }, stochastic: { enabled: false, weight: 0 }, ichimoku: { enabled: false, weight: 0 }, sar: { enabled: false, weight: 0 }, cci: { enabled: false, weight: 15 } }, useDivergences: true, useCandlePatterns: true, priority: 6 },
 ];
 
 export default function App() {
@@ -247,11 +248,30 @@ export default function App() {
           if (userData.strategies.length > 0) {
             // Auto-merge: adicionar perfis padrão faltantes
             const loadedIds = new Set(userData.strategies.map((s: any) => s.id));
-            const missingDefaults = INITIAL_PROFILES_BASE.filter(dp => !loadedIds.has(dp.id));
+            const loadedNames = new Set(userData.strategies.map((s: any) => s.name));
+            const missingDefaults = INITIAL_PROFILES_BASE
+              .filter(dp => !loadedIds.has(dp.id) && !loadedNames.has(dp.name))
+              .map(dp => ({ ...dp, id: `${dp.id}_${userSession.user.id.slice(0, 8)}` }));
             if (missingDefaults.length > 0) {
               console.log('[SYNC] Perfis padrão faltantes restaurados:', missingDefaults.map(d => d.name));
+              // Salvar perfis novos no Supabase para o usuário
+              missingDefaults.forEach(p => {
+                saveStrategy(userSession.user.id, p).catch(err => console.error('[SYNC] Save default profile error:', err));
+              });
             }
             setProfiles([...userData.strategies, ...missingDefaults]);
+          } else {
+            // Novo usuário: gerar IDs únicos para todos os perfis default
+            const uniqueDefaults = INITIAL_PROFILES_BASE.map(dp => ({
+              ...dp,
+              id: `${dp.id}_${userSession.user.id.slice(0, 8)}`
+            }));
+            console.log('[SYNC] Novo usuário: criando perfis default com IDs únicos');
+            setProfiles(uniqueDefaults);
+            // Salvar todos os perfis default no Supabase
+            uniqueDefaults.forEach(p => {
+              saveStrategy(userSession.user.id, p).catch(err => console.error('[SYNC] Save new user profile error:', err));
+            });
           }
           if (userData.trades.length > 0) setTrades(userData.trades);
           const s = userData.settings as any;
@@ -613,6 +633,20 @@ export default function App() {
                   profileMapRef.current[symbol] = currentProfile.name;
                   try { localStorage.setItem('profileMap', JSON.stringify(profileMapRef.current)); } catch { }
                   addLog(`AUTO [${currentProfile.name}]: Ordem ${side} executada em ${symbol} @ $${price.toFixed(2)} | TP: $${tp.toFixed(2)} SL: $${sl.toFixed(2)}`, 'SUCCESS');
+                  // Registrar trade no Supabase com perfil de origem
+                  if (session?.user?.id) {
+                    saveTrade(session.user.id, {
+                      symbol, side: side as any,
+                      entryPrice: price,
+                      amount: marginRequired,
+                      strategyId: currentProfile.id,
+                      strategyName: currentProfile.name,
+                      status: 'OPEN',
+                      id: res.orderId
+                    }).then(tradeId => {
+                      if (tradeId) console.log(`[TRADE] Registrado no Supabase: ${tradeId} | Perfil: ${currentProfile.name}`);
+                    }).catch(err => console.error('[TRADE] Erro ao salvar:', err));
+                  }
                   fetchRealData();
                   // --- Integrar com Agentes PDCA ---
                   const profileAgentMap: Record<string, string> = {
@@ -988,7 +1022,7 @@ export default function App() {
         return <AnalysisView exchanges={exchanges} realBalance={realPortfolio.totalBalance} availablePairs={allMarketPairs} />;
       case 'logs': return <AuditLog logs={logs} />;
       case 'wallet': return <WalletDashboard lang={lang} realPortfolio={realPortfolio} exchanges={exchanges} onRefresh={fetchRealData} spotBalance={spotBalance} />;
-      case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} />;
+      case 'history': return <TradeHistory trades={trades} lang={lang} exchanges={exchanges} profiles={profiles} />;
       case 'risk': return <RiskManagement riskMode={riskMode} setRiskMode={setRiskMode} dailyTargetPct={dailyTargetPct} setDailyTargetPct={setDailyTargetPct} dailyStopLossPct={dailyStopLossPct} setDailyStopLossPct={setDailyStopLossPct} profiles={profiles} setProfiles={setProfiles} lang={lang} />;
       case 'vpn': return <VPNManager />;
       case 'agents': return <PDCADashboard exchanges={exchanges} assets={realPortfolio.assets} profiles={profiles} setProfiles={setProfiles} />;

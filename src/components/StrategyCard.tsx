@@ -31,7 +31,8 @@ const colorMap: Record<string, string> = {
   purple: 'border-purple-500/50 shadow-purple-500/10',
   red: 'border-red-500/50 shadow-red-500/10',
   indigo: 'border-indigo-500/50 shadow-indigo-500/10',
-  gray: 'border-gray-500/50 shadow-gray-500/10'
+  gray: 'border-gray-500/50 shadow-gray-500/10',
+  cyan: 'border-cyan-500/50 shadow-cyan-500/10'
 };
 
 // Metric descriptions
@@ -47,35 +48,23 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
   const t = translations[lang].strategy_card;
   const [isDragging, setIsDragging] = React.useState(false);
 
-  // Calculate real win rate from trades distributed across profiles
+  // Calculate real stats from trades matched to this profile (NO proportional distribution)
   const realStats = React.useMemo(() => {
-    if (trades.length === 0) return { totalTrades: 0, winRate: profile.winRate, totalPnL: 0 };
+    if (trades.length === 0) return { totalTrades: 0, winRate: 0, totalPnL: 0 };
     
-    // First try to match by strategyName
-    let profileTrades = trades.filter(t =>
-      t.strategyName?.toLowerCase().includes(profile.name.toLowerCase()) ||
-      t.strategyName === profile.id
+    // Match trades by strategyName or strategyId only — no fake distribution
+    const profileTrades = trades.filter(t =>
+      t.strategyName === profile.name ||
+      t.strategyName === profile.id ||
+      t.strategyId === profile.id
     );
     
-    // If no strategyName matches, distribute trades proportionally by risk level
-    if (profileTrades.length === 0 && trades.length > 0) {
-      const riskWeights: Record<string, number> = {
-        extreme: 0.30, high: 0.25, expert: 0.20, medium: 0.15, low: 0.10
-      };
-      const weight = riskWeights[profile.riskLevel?.toLowerCase()] || 0.20;
-      const count = Math.max(1, Math.round(trades.length * weight));
-      
-      // Use profile priority/index to pick different slices
-      const sortedTrades = [...trades].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const priorityIdx = (profile.priority || 1) - 1;
-      const startIdx = Math.min(priorityIdx * count, Math.max(0, sortedTrades.length - count));
-      profileTrades = sortedTrades.slice(startIdx, startIdx + count);
-    }
+    if (profileTrades.length === 0) return { totalTrades: 0, winRate: 0, totalPnL: 0 };
     
     const closedTrades = profileTrades.filter(t => t.status === 'CLOSED');
     const allTrades = closedTrades.length > 0 ? closedTrades : profileTrades;
     const wins = allTrades.filter(t => t.pnl > 0).length;
-    const winRate = allTrades.length > 0 ? Math.round((wins / allTrades.length) * 100) : profile.winRate;
+    const winRate = allTrades.length > 0 ? Math.round((wins / allTrades.length) * 100) : 0;
     const totalPnL = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
     return { totalTrades: allTrades.length, winRate, totalPnL };
   }, [trades, profile]);
