@@ -1,10 +1,10 @@
 ---
-description: Deploy automatizado para Vercel
+description: Deploy automatizado para Cloudflare Pages
 ---
 
-# Deploy Automático para Vercel
+# Deploy Automático para Cloudflare Pages
 
-Este workflow faz commit e push das alterações para o GitHub, triggando deploy automático no Vercel.
+Este workflow faz commit e push das alterações para o GitHub, trigando deploy automático no Cloudflare Pages.
 
 ## Passos
 
@@ -16,24 +16,27 @@ Este workflow faz commit e push das alterações para o GitHub, triggando deploy
 git add .
 ```
 
-1. Fazer commit com mensagem descritiva:
+2. Fazer commit com mensagem descritiva:
 
 ```bash
 git commit -m "Deploy: [DESCRIÇÃO DA ALTERAÇÃO]"
 ```
 
-1. Fazer push para o GitHub:
+3. Fazer push para o GitHub:
 
 ```bash
 git push origin main
 ```
 
-1. Verificar status do deploy no Vercel:
-   - Acesse <https://vercel.com/willi-vianas-projects/crypto-analyzer-futures>
+4. Verificar status do deploy no Cloudflare:
+   - Acesse <https://dash.cloudflare.com> → Pages → `crypto-analyzer-futures`
    - Aguarde ~2 minutos para o deploy completar
    - Verifique se o novo commit aparece no "Source"
 
 ## Notas
 
-- Se o Vercel não pegar o novo commit, vá em Deployments > ... > Redeploy (sem cache)
-- Variáveis de ambiente devem ser configuradas em Settings > Environment Variables
+- O Cloudflare Pages detecta automaticamente pushes para `main` e faz deploy
+- Se não pegar o commit, clique em "Create deployment" ou "Retry deployment"
+- Variáveis de ambiente em Settings → Environment Variables
+- Build command provavelmente: `npm run build`
+- Build output directory: `dist`

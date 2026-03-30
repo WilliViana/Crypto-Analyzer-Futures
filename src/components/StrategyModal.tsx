@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { StrategyProfile, AdvancedIndicators, IndicatorConfig } from '../types';
-import { X, Save, Sliders, Info, BookOpen, ToggleLeft, ToggleRight, CheckSquare, Square, Brain } from 'lucide-react';
+import { X, Save, Sliders, Info, BookOpen, ToggleLeft, ToggleRight, CheckSquare, Square, Brain, Plus, Trash2, GripVertical, Pencil } from 'lucide-react';
 
 interface StrategyModalProps {
     profile: StrategyProfile;
@@ -23,6 +23,9 @@ const DEFAULT_ADVANCED_INDICATORS: AdvancedIndicators = {
 const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave }) => {
     const [formData, setFormData] = useState<StrategyProfile>(profile);
     const [activeTab, setActiveTab] = useState<'risk' | 'indicators' | 'advanced'>('risk');
+    const [newWorkflowStep, setNewWorkflowStep] = useState('');
+    const [editingStepIdx, setEditingStepIdx] = useState<number | null>(null);
+    const [editingStepValue, setEditingStepValue] = useState('');
 
     useEffect(() => {
         if (!formData.indicators || Object.keys(formData.indicators).length === 0) {
@@ -256,6 +259,114 @@ const StrategyModal: React.FC<StrategyModalProps> = ({ profile, onClose, onSave 
 
                     {activeTab === 'advanced' && (
                         <div className="space-y-4 animate-fade-in">
+                            {/* Workflow IA Editor */}
+                            <div className="p-4 bg-surface border border-card-border rounded-xl">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Brain size={16} className="text-cyan-400" />
+                                        <h4 className="font-bold text-white text-sm uppercase tracking-wide">Workflow IA</h4>
+                                    </div>
+                                    <span className="text-[9px] text-gray-500">{(formData.workflowSteps || []).length}/5 etapas</span>
+                                </div>
+                                
+                                {/* Existing steps */}
+                                <div className="space-y-2 mb-3">
+                                    {(formData.workflowSteps || []).map((step, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 group">
+                                            <div className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                                                {idx + 1}
+                                            </div>
+                                            {editingStepIdx === idx ? (
+                                                <input
+                                                    type="text"
+                                                    value={editingStepValue}
+                                                    onChange={(e) => setEditingStepValue(e.target.value)}
+                                                    onBlur={() => {
+                                                        if (editingStepValue.trim()) {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                workflowSteps: prev.workflowSteps.map((s, i) => i === idx ? editingStepValue.trim() : s)
+                                                            }));
+                                                        }
+                                                        setEditingStepIdx(null);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                        if (e.key === 'Escape') setEditingStepIdx(null);
+                                                    }}
+                                                    autoFocus
+                                                    className="flex-1 bg-black/30 border border-cyan-500/30 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                                                    aria-label={`Editar etapa ${idx + 1}`}
+                                                />
+                                            ) : (
+                                                <div
+                                                    className="flex-1 bg-black/20 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-gray-300 font-mono cursor-pointer hover:border-cyan-500/30 transition-colors"
+                                                    onClick={() => { setEditingStepIdx(idx); setEditingStepValue(step); }}
+                                                >
+                                                    {step}
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => { setEditingStepIdx(idx); setEditingStepValue(step); }}
+                                                className="p-1 text-gray-600 hover:text-cyan-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={12} />
+                                            </button>
+                                            <button
+                                                onClick={() => setFormData(prev => ({
+                                                    ...prev,
+                                                    workflowSteps: prev.workflowSteps.filter((_, i) => i !== idx)
+                                                }))}
+                                                className="p-1 text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                title="Remover etapa"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {/* Add new step */}
+                                {(formData.workflowSteps || []).length < 5 && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={newWorkflowStep}
+                                            onChange={(e) => setNewWorkflowStep(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && newWorkflowStep.trim()) {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        workflowSteps: [...(prev.workflowSteps || []), newWorkflowStep.trim()]
+                                                    }));
+                                                    setNewWorkflowStep('');
+                                                }
+                                            }}
+                                            placeholder="Nova etapa... (Enter para adicionar)"
+                                            className="flex-1 bg-black/30 border border-dashed border-gray-600 rounded-lg px-3 py-1.5 text-xs text-gray-400 focus:outline-none focus:border-cyan-500 placeholder:text-gray-600"
+                                            aria-label="Adicionar nova etapa do workflow"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                if (newWorkflowStep.trim()) {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        workflowSteps: [...(prev.workflowSteps || []), newWorkflowStep.trim()]
+                                                    }));
+                                                    setNewWorkflowStep('');
+                                                }
+                                            }}
+                                            disabled={!newWorkflowStep.trim()}
+                                            className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                            title="Adicionar etapa"
+                                        >
+                                            <Plus size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex items-center justify-between p-4 bg-surface border border-card-border rounded-xl group hover:border-primary/50 transition-all">
                                 <div>
                                     <h4 className="font-bold text-white text-sm">Divergências Estendidas</h4>

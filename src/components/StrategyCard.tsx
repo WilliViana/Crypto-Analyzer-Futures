@@ -48,16 +48,26 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
   const t = translations[lang].strategy_card;
   const [isDragging, setIsDragging] = React.useState(false);
 
-  // Calculate real stats from trades matched to this profile (NO proportional distribution)
+  // Calculate real stats from trades matched to this profile
   const realStats = React.useMemo(() => {
     if (trades.length === 0) return { totalTrades: 0, winRate: 0, totalPnL: 0 };
     
-    // Match trades by strategyName or strategyId only — no fake distribution
-    const profileTrades = trades.filter(t =>
-      t.strategyName === profile.name ||
-      t.strategyName === profile.id ||
-      t.strategyId === profile.id
-    );
+    const pName = profile.name.toLowerCase();
+    const pId = profile.id.toLowerCase();
+    
+    // Match trades by strategyName (case-insensitive, includes), strategyId, or exact id
+    const profileTrades = trades.filter(t => {
+      const sName = (t.strategyName || '').toLowerCase();
+      const sId = (t.strategyId || '').toLowerCase();
+      return (
+        sName === pName ||
+        sName === pId ||
+        sId === pId ||
+        sId === pName ||
+        (sName && sName.includes(pName) && pName.length > 2) ||
+        (sName && pName.includes(sName) && sName.length > 2)
+      );
+    });
     
     if (profileTrades.length === 0) return { totalTrades: 0, winRate: 0, totalPnL: 0 };
     
