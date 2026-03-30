@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Language, Trade, StrategyProfile, Exchange } from '../types';
-import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock, Settings2, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, PieChart, Layers, Clock, Target, BarChart2, EyeOff, Eye, X, Shield, ExternalLink, ArrowUpRight, ArrowDownRight, Percent, LineChart, Scale, Rocket, Zap, XCircle, CheckSquare, Square, RefreshCw, Crosshair, Trophy, StopCircle, PlayCircle, ShieldAlert, Globe2, Unlock, Settings2, ChevronDown, ChevronUp, GripVertical, Maximize2, Minimize2, List } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, PieChart as RechartsPC, Pie, Cell } from 'recharts';
 import TradingViewWidget from './TradingViewWidget';
 import { closePosition, closeMultiplePositions, fetchTradeHistory, fetchIncomeHistory, callBinanceProxy } from '../services/exchangeService';
@@ -48,6 +48,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const [isClosingAll, setIsClosingAll] = useState(false);
     const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
     const [isClosingSelected, setIsClosingSelected] = useState(false);
+    const [ordersExpanded, setOrdersExpanded] = useState(false);
+    const [showProfileOrders, setShowProfileOrders] = useState<StrategyProfile | null>(null);
     const [apiStats, setApiStats] = useState<{ bestTrade: number; worstTrade: number; winRate: number; totalTrades: number; equityCurve: { time: string; value: number; original_ts: number }[]; bestTradeSymbol?: string; worstTradeSymbol?: string }>({ bestTrade: 0, worstTrade: 0, winRate: 0, totalTrades: 0, equityCurve: [] });
     const [apiTrades, setApiTrades] = useState<{ symbol: string; side: string; pnl: number; time: number; realizedPnl: number }[]>([]);
     const [metricTooltip, setMetricTooltip] = useState<string | null>(null);
@@ -493,58 +495,161 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         }
     };
 
-    // Order Detail Modal
-    const OrderModal = ({ asset, onClose }: { asset: any; onClose: () => void }) => {
+
+    // Live price — buscado no nível do componente quando um order está selecionado
+    useEffect(() => {
+        if (!selectedOrder) { setLivePrice(null); return; }
+        const symbol = selectedOrder.symbol;
+        const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+        const isTestnet = activeExchange?.isTestnet;
+        const urls = isTestnet
+            ? ['https://testnet.binancefuture.com/fapi/v1/ticker/price']
+            : [
+                'https://fapi.binance.com/fapi/v1/ticker/price',
+                'https://fapi1.binance.com/fapi/v1/ticker/price',
+                'https://fapi2.binance.com/fapi/v1/ticker/price',
+            ];
+        let workingUrl = urls[0];
+        const fetchLive = async () => {
+            for (const url of [workingUrl, ...urls.filter(u => u !== workingUrl)]) {
+                try {
+                    const res = await fetch(`${url}?symbol=${symbol}`);
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    if (data.price) { setLivePrice(parseFloat(data.price)); workingUrl = url; return; }
+                } catch { /* try next */ }
+            }
+        };
+        fetchLive();
+        const iv = setInterval(fetchLive, 4000);
+        return () => clearInterval(iv);
+    }, [selectedOrder?.symbol]);
+
+    // Modal: ordens abertas por perfil
+    const renderProfileOrdersModal = (profile: StrategyProfile) => {
+        const profileAssets = assets.filter(a => getProfileForAsset(a.symbol) === profile.name);
+        return (
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+                onClick={() => setShowProfileOrders(null)}
+            >
+                <div
+                    className="bg-[#151A25] border border-[#2A303C] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="p-5 border-b border-[#2A303C] flex items-center justify-between bg-gradient-to-r from-indigo-900/30 to-purple-900/20">
+                        <div>
+                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold mb-1 ${getProfileColor(profile.name)}`}>
+                                {getProfileIcon(profile.name)} {profile.name}
+                            </div>
+                            <h3 className="text-lg font-bold text-white">Ordens Abertas — {profile.name}</h3>
+                            <p className="text-xs text-gray-500">{profileAssets.length} posição(ões) ativa(s)</p>
+                        </div>
+                        <button onClick={() => setShowProfileOrders(null)} aria-label="Fechar" className="bg-black/20 hover:bg-white/10 p-2 rounded-full text-gray-400 hover:text-white transition-colors"><X size={20} /></button>
+                    </div>
+                    <div className="overflow-auto max-h-[60vh]">
+                        {profileAssets.length === 0 ? (
+                            <div className="p-10 text-center text-gray-500 italic text-sm">Nenhuma ordem aberta para este perfil.</div>
+                        ) : (
+                            <table className="w-full text-sm text-gray-400">
+                                <thead className="bg-black/20 text-[10px] uppercase font-bold text-gray-500 border-b border-[#2A303C]">
+                                    <tr>
+                                        <th className="p-3">Par</th>
+                                        <th className="p-3">Lado</th>
+                                        <th className="p-3 text-right">Entrada</th>
+                                        <th className="p-3 text-right">PnL</th>
+                                        <th className="p-3 text-right">Margem</th>
+                                        <th className="p-3 text-center">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 font-mono text-xs">
+                                    {profileAssets.map(asset => {
+                                        const side = asset.amount > 0 ? 'LONG' : 'SHORT';
+                                        const isPos = asset.unrealizedPnL >= 0;
+                                        return (
+                                            <tr key={asset.symbol} className="hover:bg-white/5 transition-colors">
+                                                <td className="p-3 font-bold text-white">{asset.symbol}</td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${asset.amount > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{side}</span>
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                    {asset.price > 0 ? `$${asset.price.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : <span className="text-yellow-400">—</span>}
+                                                </td>
+                                                <td className={`p-3 text-right font-bold ${isPos ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {isPos ? '+' : ''}{asset.unrealizedPnL.toFixed(2)}
+                                                </td>
+                                                <td className="p-3 text-right text-gray-300">
+                                                    {asset.initialMargin ? `$${asset.initialMargin.toFixed(2)}` : '—'}
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    <button
+                                                        onClick={() => { setShowProfileOrders(null); setSelectedOrder(asset); }}
+                                                        className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] font-bold hover:bg-blue-500/20 transition-colors mr-1"
+                                                    >Ver</button>
+                                                    <button
+                                                        onClick={() => handleClosePosition(asset)}
+                                                        disabled={isClosing}
+                                                        className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[10px] font-bold hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                                    >{isClosing ? '...' : 'Fechar'}</button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                    {profileAssets.length > 0 && (
+                        <div className="p-4 border-t border-[#2A303C] bg-black/20 flex items-center justify-between text-xs">
+                            <span className="text-gray-500">PnL Total: <span className={profileAssets.reduce((s, a) => s + a.unrealizedPnL, 0) >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                                {profileAssets.reduce((s, a) => s + a.unrealizedPnL, 0) >= 0 ? '+' : ''}{profileAssets.reduce((s, a) => s + a.unrealizedPnL, 0).toFixed(2)}
+                            </span></span>
+                            <button
+                                onClick={async () => {
+                                    const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
+                                    if (!activeExchange) return;
+                                    setIsClosing(true);
+                                    for (const asset of profileAssets) {
+                                        await handleClosePosition(asset);
+                                    }
+                                    setShowProfileOrders(null);
+                                    setIsClosing(false);
+                                }}
+                                disabled={isClosing}
+                                className="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 rounded-lg text-[10px] font-bold uppercase transition-colors disabled:opacity-50"
+                            >Fechar Todas do Perfil</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // Order Detail Modal — extraído para fora do JSX como elemento estável
+    const renderOrderModal = (asset: any) => {
         const profileName = getProfileForAsset(asset.symbol);
         const side = asset.amount > 0 ? 'LONG' : 'SHORT';
         const pnlPercent = asset.initialMargin ? ((asset.unrealizedPnL / asset.initialMargin) * 100).toFixed(2) : '0';
         const isPositive = asset.unrealizedPnL >= 0;
 
-        // Find profile config for TP/SL values
         const matchedProfile = profiles.find(p => p.name === profileName);
         const slPct = matchedProfile?.stopLoss || 5;
         const tpPct = matchedProfile?.takeProfit || 10;
-        const entryPrice = asset.price;
+        // Usa precio real da posição (asset.price = entry price da Binance)
+        const entryPrice = asset.price && asset.price > 0 ? asset.price : (livePrice || 0);
         const tpPrice = side === 'LONG' ? entryPrice * (1 + tpPct / 100) : entryPrice * (1 - tpPct / 100);
         const slPrice = side === 'LONG' ? entryPrice * (1 - slPct / 100) : entryPrice * (1 + slPct / 100);
 
-        // Fetch live price with fallback URLs
-        useEffect(() => {
-            setLivePrice(null);
-            const activeExchange = exchanges.find(e => e.status === 'CONNECTED');
-            const isTestnet = activeExchange?.isTestnet;
-            const urls = isTestnet
-                ? ['https://testnet.binancefuture.com/fapi/v1/ticker/price']
-                : [
-                    'https://fapi.binance.com/fapi/v1/ticker/price',
-                    'https://fapi1.binance.com/fapi/v1/ticker/price',
-                    'https://fapi2.binance.com/fapi/v1/ticker/price',
-                    'https://fapi3.binance.com/fapi/v1/ticker/price',
-                ];
-            let workingUrl = urls[0];
-
-            const fetchLive = async () => {
-                for (const url of [workingUrl, ...urls.filter(u => u !== workingUrl)]) {
-                    try {
-                        const res = await fetch(`${url}?symbol=${asset.symbol}`);
-                        if (!res.ok) continue;
-                        const data = await res.json();
-                        if (data.price) {
-                            setLivePrice(parseFloat(data.price));
-                            workingUrl = url; // cache working URL
-                            return;
-                        }
-                    } catch { /* try next */ }
-                }
-            };
-            fetchLive();
-            const iv = setInterval(fetchLive, 4000);
-            return () => clearInterval(iv);
-        }, [asset.symbol, exchanges]);
-
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-                <div className="bg-[#151A25] border border-[#2A303C] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            // Backdrop: clica fora fecha o modal
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+                onClick={() => setSelectedOrder(null)}
+            >
+                <div
+                    className="bg-[#151A25] border border-[#2A303C] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
                     <div className={`p-6 border-b border-[#2A303C] ${isPositive ? 'bg-gradient-to-r from-green-900/30 to-emerald-900/20' : 'bg-gradient-to-r from-red-900/30 to-rose-900/20'}`}>
                         <div className="flex justify-between items-start">
                             <div>
@@ -557,7 +662,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                     {profileName}
                                 </div>
                             </div>
-                            <button onClick={onClose} aria-label="Close" className="bg-black/20 hover:bg-white/10 p-2 rounded-full text-gray-400 hover:text-white transition-colors"><X size={20} /></button>
+                            <button onClick={() => setSelectedOrder(null)} aria-label="Fechar modal" className="bg-black/20 hover:bg-white/10 p-2 rounded-full text-gray-400 hover:text-white transition-colors"><X size={20} /></button>
                         </div>
                     </div>
 
@@ -565,7 +670,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-black/30 p-4 rounded-xl border border-white/5">
                                 <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Preço de Entrada</div>
-                                <div className="text-white font-mono font-bold text-lg">${entryPrice.toLocaleString()}</div>
+                                <div className="text-white font-mono font-bold text-lg">
+                                    {entryPrice > 0 ? `$${entryPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : <span className="text-yellow-400 text-sm">Aguardando...</span>}
+                                </div>
                             </div>
                             <div className="bg-black/30 p-4 rounded-xl border border-white/5">
                                 <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Valor em USD</div>
@@ -584,13 +691,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             </div>
                         </div>
 
-                        {/* Live Price */}
+                        {/* Preço Atual Real-Time */}
                         <div className="bg-blue-900/10 p-3 rounded-lg border border-blue-500/20 flex justify-between items-center">
                             <span className="text-[10px] text-blue-400 uppercase font-bold flex items-center gap-1"><Activity size={10} className="animate-pulse" /> Preço Atual (Real-Time)</span>
-                            <span className="text-blue-400 font-mono font-bold text-lg">{livePrice ? `$${livePrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : '...'}</span>
+                            <span className="text-blue-400 font-mono font-bold text-lg">{livePrice ? `$${livePrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : 'Carregando...'}</span>
                         </div>
 
                         {/* TP/SL Values */}
+                        {entryPrice > 0 && (
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-green-900/10 p-4 rounded-xl border border-green-500/20">
                                 <div className="text-[10px] text-green-400 uppercase font-bold mb-1 flex items-center gap-1">
@@ -607,6 +715,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                 <div className="text-[9px] text-red-400/60 mt-1">-{slPct}% do entry</div>
                             </div>
                         </div>
+                        )}
 
                         {asset.initialMargin && (
                             <div className="bg-black/20 p-3 rounded-lg border border-white/5 flex justify-between text-xs">
@@ -699,7 +808,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
             )}
 
-            {selectedOrder && <OrderModal asset={selectedOrder} onClose={() => setSelectedOrder(null)} />}
+            {selectedOrder && renderOrderModal(selectedOrder)}
+            {showProfileOrders && renderProfileOrdersModal(showProfileOrders)}
 
             {/* Dashboard Header - ALWAYS VISIBLE */}
             <div className="w-full bg-[#151A25] rounded-xl border border-[#2A303C] shadow-2xl overflow-hidden">
@@ -1088,12 +1198,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             return (
                                 <div
                                     key={profile.id}
-                                    className={`p-3 rounded-xl border transition-all relative ${isTop
-                                        ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
+                                    className={`p-3 rounded-xl border transition-all relative cursor-pointer hover:scale-[1.01] ${isTop
+                                        ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/10 hover:border-yellow-500/80'
                                         : profile.active
-                                            ? 'bg-green-500/5 border-green-500/20'
+                                            ? 'bg-green-500/5 border-green-500/20 hover:border-green-500/40'
                                             : 'bg-black/20 border-gray-700/50 opacity-60'
                                         }`}
+                                    onClick={() => profile.active && setShowProfileOrders(profile)}
+                                    title={profile.active ? `Ver ordens abertas de ${profile.name}` : 'Perfil inativo'}
                                 >
                                     {isTop && (
                                         <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">
@@ -1128,6 +1240,23 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                                             style={{ width: `${Math.min(100, Math.max(5, (currentCap / Math.max(profile.capital, 1)) * 50))}%` }}
                                         />
                                     </div>
+                                    {/* Meta e Stop do perfil (apenas quando riskMode = profile) */}
+                                    {riskMode === 'profile' && profile.active && (profile.profileDailyTargetPct || profile.profileDailyStopLossPct) && (
+                                        <div className="flex gap-2 mt-2">
+                                            <span className="text-[9px] bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded font-bold">
+                                                Meta: +{profile.profileDailyTargetPct || dailyTargetPct}%
+                                            </span>
+                                            <span className="text-[9px] bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded font-bold">
+                                                Stop: -{profile.profileDailyStopLossPct || dailyStopLossPct}%
+                                            </span>
+                                        </div>
+                                    )}
+                                    {profile.active && (
+                                        <div className="mt-1.5 flex items-center gap-1 text-[9px] text-gray-600 hover:text-gray-400 transition-colors">
+                                            <List size={9} />
+                                            <span>Ver ordens</span>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         });
@@ -1235,9 +1364,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                 {/* Orders Panel */}
                 {isWidgetVisible('ordersPanel') && (
-                <div className="bg-surface border border-card-border rounded-xl shadow-lg flex flex-col h-[350px] overflow-hidden">
+                <div className={`bg-surface border border-card-border rounded-xl shadow-lg flex flex-col ${ordersExpanded ? 'fixed inset-4 z-40' : 'h-[350px]'} overflow-hidden transition-all`}>
                     {/* Tabs */}
-                    <div className="flex border-b border-[#2A303C]">
+                    <div className="flex border-b border-[#2A303C] items-center">
                         <button
                             onClick={() => setOrderTab('positive')}
                             className={`flex-1 py-3 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors ${orderTab === 'positive'
@@ -1257,6 +1386,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         >
                             <TrendingDown size={14} />
                             Negativas ({negativeOrders.length})
+                        </button>
+                        {/* Botão Expandir */}
+                        <button
+                            onClick={() => setOrdersExpanded(!ordersExpanded)}
+                            className="p-3 text-gray-500 hover:text-white transition-colors border-l border-[#2A303C]"
+                            title={ordersExpanded ? 'Recolher' : 'Expandir'}
+                        >
+                            {ordersExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                         </button>
                     </div>
 

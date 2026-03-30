@@ -24,7 +24,10 @@ export default function RiskManagement({
     profiles, setProfiles, lang
 }: RiskManagementProps) {
     const [selectedMode, setSelectedMode] = useState<RiskMode>(riskMode);
-    const isActivated = selectedMode === riskMode;
+    const [justActivated, setJustActivated] = useState(false);
+    // Botão aparece sempre que selectedMode !== riskMode ativo (usuário quer trocar)
+    // OU quando está no mesmo modo mas quer reconfirmar (justActivated reset rápido)
+    const canActivate = selectedMode !== riskMode || !justActivated;
 
     const modes = [
         { id: 'general' as RiskMode, label: 'Geral', icon: Globe2, desc: 'Limites de ganho e perda para toda a plataforma', color: 'indigo' },
@@ -35,6 +38,14 @@ export default function RiskManagement({
     const handleActivate = () => {
         setRiskMode(selectedMode);
         localStorage.setItem('cap_risk_mode', selectedMode);
+        setJustActivated(true);
+        // Persist profile-specific risk settings
+        try {
+            localStorage.setItem('cap_profile_risks', JSON.stringify(
+                profiles.map(p => ({ id: p.id, target: p.profileDailyTargetPct, stop: p.profileDailyStopLossPct }))
+            ));
+        } catch { }
+        setTimeout(() => setJustActivated(false), 3000);
     };
 
     const updateProfileRisk = (profileId: string, field: 'profileDailyTargetPct' | 'profileDailyStopLossPct', value: number) => {
@@ -107,15 +118,23 @@ export default function RiskManagement({
             </div>
 
             {/* Activate Button */}
-            {!isActivated && (
+            {canActivate && (
                 <div className="mb-6 flex justify-center">
                     <button
                         onClick={handleActivate}
                         className="px-8 py-3 bg-primary text-white rounded-xl font-bold uppercase text-sm shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center gap-2"
                     >
                         <CheckCircle size={16} />
-                        Ativar Modo "{selectedMode === 'general' ? 'Geral' : selectedMode === 'profile' ? 'Perfis' : 'Livre'}"
+                        {selectedMode !== riskMode
+                            ? `Ativar Modo "${selectedMode === 'general' ? 'Geral' : selectedMode === 'profile' ? 'Perfis' : 'Livre'}"`
+                            : `✓ Modo "${riskMode === 'general' ? 'Geral' : riskMode === 'profile' ? 'Perfis' : 'Livre'}" Ativo`
+                        }
                     </button>
+                    {justActivated && (
+                        <span className="ml-3 flex items-center text-green-400 text-xs font-bold gap-1">
+                            <CheckCircle size={12} /> Ativado com sucesso!
+                        </span>
+                    )}
                 </div>
             )}
 
