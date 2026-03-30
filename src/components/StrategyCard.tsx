@@ -174,16 +174,23 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
       {/* Logic Pipeline */}
       <div className="flex flex-col items-center gap-2 py-4 bg-black/20 rounded-xl mb-4 border border-white/5 min-h-[100px]">
         <div className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mb-1">Workflow IA</div>
-        {(profile.workflowSteps || []).slice(0, 3).map((step, idx) => (
-          <React.Fragment key={idx}>
-            <div className="text-[10px] font-mono font-bold bg-surface border border-card-border px-3 py-1.5 rounded-lg text-gray-300 w-[90%] text-center truncate">
-              {step}
-            </div>
-            {idx < Math.min((profile.workflowSteps || []).length, 3) - 1 && (
-              <ArrowDown size={10} className="text-gray-700" />
-            )}
-          </React.Fragment>
-        ))}
+        {(profile.workflowSteps || []).length > 0 ? (
+          (profile.workflowSteps || []).slice(0, 3).map((step, idx) => (
+            <React.Fragment key={idx}>
+              <div className="text-[10px] font-mono font-bold bg-surface border border-card-border px-3 py-1.5 rounded-lg text-gray-300 w-[90%] text-center truncate">
+                {step}
+              </div>
+              {idx < Math.min((profile.workflowSteps || []).length, 3) - 1 && (
+                <ArrowDown size={10} className="text-gray-700" />
+              )}
+            </React.Fragment>
+          ))
+        ) : (
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="text-[10px] text-gray-600 italic">Nenhum workflow definido</div>
+            <div className="text-[9px] text-gray-700">Configure via botão "Config" abaixo</div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2 mb-4">
@@ -216,20 +223,20 @@ const StrategyCard: React.FC<StrategyCardProps> = React.memo(({ profile, lang, o
             {t.win_rate}
             {realStats.totalTrades > 0 && <span className="text-green-400">(Real)</span>}
           </div>
-          <div className={`text-xs font-mono font-bold ${realStats.totalTrades > 0 ? 'text-green-400' : 'text-white'}`}>
+          <div className={`text-xs font-mono font-bold ${realStats.totalTrades > 0 ? (realStats.winRate >= 50 ? 'text-green-400' : 'text-red-400') : 'text-white'}`}>
             {realStats.winRate}%
           </div>
         </div>
         <div className="bg-black/30 p-2 rounded-lg border border-white/5 text-center">
           <div className="text-[8px] text-gray-500 uppercase font-bold">{t.trades}</div>
           <div className="text-xs font-mono font-bold text-white">
-            {realStats.totalTrades > 0 ? realStats.totalTrades : profile.trades}
+            {realStats.totalTrades > 0 ? realStats.totalTrades : (profile.trades || 0)}
           </div>
         </div>
         <div className="bg-black/30 p-2 rounded-lg border border-white/5 text-center">
           <div className="text-[8px] text-gray-500 uppercase font-bold">Retorno</div>
-          <div className={`text-xs font-mono font-bold ${realStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            ${realStats.totalPnL.toFixed(2)}
+          <div className={`text-xs font-mono font-bold ${realStats.totalPnL > 0 ? 'text-green-400' : realStats.totalPnL < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+            {realStats.totalPnL !== 0 ? `${realStats.totalPnL >= 0 ? '+' : ''}$${realStats.totalPnL.toFixed(2)}` : '$0.00'}
           </div>
         </div>
       </div>

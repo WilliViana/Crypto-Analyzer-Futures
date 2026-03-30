@@ -78,10 +78,90 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
     const extraParts: string[] = [];
     if (parsed.side) extraParts.push(parsed.side);
     if (parsed.orderId) extraParts.push(`#${parsed.orderId}`);
-    if (parsed.error) extraParts.push(`❌ ${parsed.error}`);
     if (parsed.action) extraParts.push(parsed.action);
+    // Error is handled separately now by formatErrorMessage
+    if (parsed.error) extraParts.push(parsed.error);
 
     return { profile, value, pair, extra: extraParts.join(' | ') };
+  };
+
+  // Translate Binance error codes to user-friendly messages
+  const formatErrorMessage = (message: string, action: string): { text: string; solution: string; isError: boolean } => {
+    if (action !== 'ORDER_FAILED' && !message.includes('code')) {
+      return { text: message, solution: '', isError: false };
+    }
+
+    // Try to parse error code from various formats
+    let errorCode: number | null = null;
+    let errorMsg = '';
+    
+    // Format: {"code":-4005,"msg":"..."}
+    const jsonMatch = message.match(/\{"code":\s*(-?\d+),\s*"msg":\s*"([^"]+)"\}/);
+    if (jsonMatch) {
+      errorCode = parseInt(jsonMatch[1]);
+      errorMsg = jsonMatch[2];
+    }
+    
+    // Format: code:-4005
+    const simpleMatch = message.match(/code[":]*\s*(-?\d+)/);
+    if (!errorCode && simpleMatch) {
+      errorCode = parseInt(simpleMatch[1]);
+    }
+
+    const errorMap: Record<number, { label: string; solution: string }> = {
+      [-4005]: {
+        label: 'Quantidade maior que o máximo permitido',
+        solution: 'Reduza a quantidade da ordem ou o capital alocado no perfil'
+      },
+      [-4003]: {
+        label: 'Quantidade menor que o mínimo permitido',
+        solution: 'Aumente o capital ou diminua a alavancagem'
+      },
+      [-4014]: {
+        label: 'Precisão de preço inválida',
+        solution: 'Ajuste automático de casas decimais necessário'
+      },
+      [-4015]: {
+        label: 'Precisão de quantidade inválida (LOT_SIZE)',
+        solution: 'Verifique o step size do par no Binance'
+      },
+      [-2019]: {
+        label: 'Margem insuficiente',
+        solution: 'Adicione fundos à conta ou reduza a alavancagem'
+      },
+      [-1111]: {
+        label: 'Precisão não permitida',
+        solution: 'Verifique os filtros LOT_SIZE e PRICE_FILTER do par'
+      },
+      [-1121]: {
+        label: 'Par de trading inválido',
+        solution: 'Verifique se o par está disponível para Futures'
+      },
+      [-2022]: {
+        label: 'Ordem rejeitada — ReduceOnly não permitido',
+        solution: 'Verifique o modo de margem e posição existente'
+      },
+    };
+
+    if (errorCode && errorMap[errorCode]) {
+      const mapped = errorMap[errorCode];
+      return {
+        text: `⚠️ Erro ${errorCode}: ${mapped.label}`,
+        solution: `💡 ${mapped.solution}`,
+        isError: true
+      };
+    }
+
+    // Generic error with code
+    if (errorCode) {
+      return {
+        text: `⚠️ Erro Binance ${errorCode}: ${errorMsg || message}`,
+        solution: '💡 Consulte a documentação da Binance para este código',
+        isError: true
+      };
+    }
+
+    return { text: message, solution: '', isError: action === 'ORDER_FAILED' };
   };
 
   // Merge and format logs
@@ -198,8 +278,10 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-white/5 transition-colors group">
+                filteredLogs.map((log) => {
+                  const errorInfo = formatErrorMessage(log.message || '', log.action || '');
+                  return (
+                  <tr key={log.id} className={`hover:bg-white/5 transition-colors group ${errorInfo.isError ? 'bg-red-900/10' : ''}`}>
                     <td className="p-3 text-xs text-gray-500 flex items-center gap-1">
                       <Clock size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                       {log.timestamp}
@@ -222,10 +304,20 @@ const AuditLog: React.FC<AuditLogProps> = ({ logs: localLogs }) => {
                       {log.value !== '-' ? log.value : <span className="text-gray-600">-</span>}
                     </td>
                     <td className={`p-3 text-xs ${log.level === 'ERROR' ? 'text-red-400' : log.level === 'SUCCESS' ? 'text-green-400' : 'text-gray-300'}`}>
-                      {log.message}
+                      {errorInfo.isError ? (
+                        <div className="space-y-1">
+                          <div className="text-red-400 font-bold">{errorInfo.text}</div>
+                          {errorInfo.solution && (
+                            <div className="text-yellow-400/80 text-[10px] italic">{errorInfo.solution}</div>
+                          )}
+                        </div>
+                      ) : (
+                        log.message
+                      )}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
