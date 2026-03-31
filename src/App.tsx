@@ -138,12 +138,9 @@ export default function App() {
     setLogs(prev => [...prev.slice(-99), newLog]);
   }, []);
 
-  useEffect(() => {
-    const savedProfiles = localStorage.getItem('cap_profiles');
-    if (savedProfiles) {
-      try { setProfiles(JSON.parse(savedProfiles)); } catch (e) { }
-    }
-  }, []);
+  // REMOVED: Do NOT load profiles from localStorage on mount without userId.
+  // Profiles are loaded from Supabase in loadUserDataAndSetState keyed by userId.
+  // Loading from a global localStorage key caused data leaks between users.
 
   // Track when initial data load completes to prevent auto-save during load
   const dataLoadedRef = React.useRef(false);
@@ -152,10 +149,13 @@ export default function App() {
   const lastSavedProfilesRef = React.useRef<string>('');
   const lastSavedSettingsRef = React.useRef<string>('');
 
-  // Auto-save profiles to localStorage and Supabase
+  // Auto-save profiles to localStorage (user-scoped) and Supabase
   useEffect(() => {
-    // Always save to localStorage
-    localStorage.setItem('cap_profiles', JSON.stringify(profiles));
+    // Save to localStorage scoped by userId to prevent data leaks
+    const uid = session?.user?.id;
+    if (uid) {
+      localStorage.setItem(`cap_profiles_${uid}`, JSON.stringify(profiles));
+    }
 
     // Skip saving to Supabase during initial load
     if (!dataLoadedRef.current || !session?.user?.id || profiles.length === 0) {
@@ -343,10 +343,46 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         if (abortController) abortController.abort();
         dataLoadedRef.current = false;
+        isLoadingRef.current = false;
+        // Clear user-scoped localStorage BEFORE losing userId reference
+        const logoutUserId = lastUserIdRef.current;
+        if (logoutUserId) {
+          localStorage.removeItem(`crypto-analyzer-data-cache_${logoutUserId}`);
+          localStorage.removeItem(`cap_profiles_${logoutUserId}`);
+        }
+        // Also clear legacy global keys
+        localStorage.removeItem('crypto-analyzer-data-cache');
+        localStorage.removeItem('cap_profiles');
+        localStorage.removeItem('profileMap');
+        localStorage.removeItem('cap_pdca_agents');
+        localStorage.removeItem('cap_notifications');
+        localStorage.removeItem('cap_trading_date');
+        localStorage.removeItem('cap_daily_start_equity');
         lastUserIdRef.current = null;
+        lastSavedProfilesRef.current = '';
+        lastSavedSettingsRef.current = '';
+        // CRITICAL: Reset ALL user-specific state to prevent data leaks
         setSession(null);
         setIsAuthenticated(false);
         setExchanges([]);
+        setProfiles(INITIAL_PROFILES_BASE);
+        setTrades([]);
+        setRealPortfolio({ totalBalance: 0, unrealizedPnL: 0, assets: [], isSimulated: false });
+        setLogs([]);
+        setSelectedPairs(['BTCUSDT']);
+        setIsRunning(false);
+        setDailyStartBalance(0);
+        setDailyTargetReached(false);
+        setSpotBalance(0);
+        setConsecutiveLosses(0);
+        setCircuitBreakerActive(false);
+        setAllMarketPairs([]);
+        setAvailableQuotes([]);
+        setActiveTab('dashboard');
+        tradesLoadedRef.current = false;
+        loadedExchangeIdRef.current = null;
+        profileMapRef.current = {};
+        openPositionsRef.current = new Set();
         setLoading(false);
       }
     });
@@ -1041,7 +1077,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-background text-gray-200 overflow-hidden font-sans relative">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={async () => { await supabase.auth.signOut(); dataLoadedRef.current = false; setIsAuthenticated(false); setSession(null); setExchanges([]); }} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} lang={lang} isAdmin={userRole === 'admin'} onLogout={async () => { setIsRunning(false); await supabase.auth.signOut(); /* full cleanup handled in SIGNED_OUT event handler */ }} />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         <header className="h-16 border-b border-card-border bg-[#151A25]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center gap-4">

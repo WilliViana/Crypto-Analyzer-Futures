@@ -332,25 +332,27 @@ export const saveUserSettings = async (userId: string, settings: any): Promise<b
 
 // ============ LOCAL CACHE ============
 
-const CACHE_KEY = 'crypto-analyzer-data-cache';
+const CACHE_KEY_PREFIX = 'crypto-analyzer-data-cache';
 const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
+
+const getCacheKey = (userId: string) => `${CACHE_KEY_PREFIX}_${userId}`;
 
 const saveToCache = (userId: string, data: UserData): void => {
     try {
         const cacheEntry = { userId, data, timestamp: Date.now() };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheEntry));
-        console.log('[CACHE] Data saved to local cache');
+        localStorage.setItem(getCacheKey(userId), JSON.stringify(cacheEntry));
+        console.log('[CACHE] Data saved to local cache for user:', userId.slice(0, 8));
     } catch { /* localStorage full or unavailable */ }
 };
 
 const loadFromCache = (userId: string): UserData | null => {
     try {
-        const raw = localStorage.getItem(CACHE_KEY);
+        const raw = localStorage.getItem(getCacheKey(userId));
         if (!raw) return null;
         const entry = JSON.parse(raw);
         if (entry.userId !== userId) return null;
         if (Date.now() - entry.timestamp > CACHE_TTL) return null;
-        console.log('[CACHE] Loaded data from local cache');
+        console.log('[CACHE] Loaded data from local cache for user:', userId.slice(0, 8));
         return entry.data;
     } catch {
         return null;
