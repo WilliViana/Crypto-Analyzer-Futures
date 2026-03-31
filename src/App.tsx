@@ -18,6 +18,7 @@ import ChatBot from './components/ChatBot';
 import AnalysisView from './components/AnalysisView';
 import UserProfile from './components/UserProfile';
 import InformationTab from './components/InformationTab';
+import OnboardingTour from './components/OnboardingTour';
 import VPNManager from './components/VPNManager';
 import VPNStatus from './components/VPNStatus';
 import NotificationCenter from './components/NotificationCenter';
@@ -117,6 +118,7 @@ export default function App() {
   const [profileIndex, setProfileIndex] = useState(0);
   const [assetBatchIndex, setAssetBatchIndex] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const scanIntervalRef = useRef<any>(null);
   const dragIdRef = useRef<string | null>(null);
@@ -300,6 +302,12 @@ export default function App() {
           console.log('[AUTH] Data loaded, auto-save enabled');
           isLoadingRef.current = false;
           setLoading(false);
+
+          // Auto-show onboarding tour for new users
+          const tourDone = localStorage.getItem(`cap_tour_done_${userSession.user.id}`);
+          if (!tourDone) {
+            setTimeout(() => setShowTour(true), 1200);
+          }
         }
       } catch (err: any) {
         if (signal.aborted) {
@@ -1064,7 +1072,7 @@ export default function App() {
       case 'agents': return <PDCADashboard exchanges={exchanges} assets={realPortfolio.assets} profiles={profiles} setProfiles={setProfiles} />;
       case 'admin': return <AdminPanel lang={lang} />;
       case 'profile': return <UserProfile lang={lang} />;
-      case 'info': return <InformationTab lang={lang} />;
+      case 'info': return <InformationTab lang={lang} onStartTour={() => setShowTour(true)} />;
       default: return <div className="text-white p-10">Interface {activeTab} em carregamento...</div>;
     }
   };
@@ -1126,6 +1134,7 @@ export default function App() {
       {showPairSelector && <SymbolSelector allPairs={allMarketPairs} availableQuotes={availableQuotes} selectedSymbols={selectedPairs} onClose={() => setShowPairSelector(false)} onSave={(newSelection) => { setSelectedPairs(newSelection); setShowPairSelector(false); addLog(`SISTEMA: Lista de ativos atualizada.`, 'INFO'); }} />}
       <ChatBot lang={lang} marketData={{ price: 0, change24h: 0, rsi: 50, macd: 0, bollingerState: 'Middle', volume: 0, vwap: 0, atr: 0, stochasticK: 50, stochasticD: 50, macdSignal: 0, macdHist: 0 }} symbol="BTC" />
       <NotificationCenter isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
+      {showTour && <OnboardingTour onComplete={() => { setShowTour(false); const uid = session?.user?.id; if (uid) localStorage.setItem(`cap_tour_done_${uid}`, 'true'); }} onNavigate={(tab) => { setActiveTab(tab); setShowTour(false); const uid = session?.user?.id; if (uid) localStorage.setItem(`cap_tour_done_${uid}`, 'true'); }} />}
 
       {/* Mobile Bottom Navigation */}
       <nav className="mobile-bottom-nav">
